@@ -25,6 +25,20 @@
   <article class="stat"><span>Refresh status</span><strong class="small-value">{{ latest_run.status if latest_run else "No runs" }}</strong></article>
 </section>
 
+{% if my_team %}
+<section class="panel my-team-panel">
+  <div class="panel-title"><div><p class="eyebrow">MY FPL TEAM</p><h2>{{ my_team.name }}</h2><p class="muted">{{ my_team.manager }} · Entry {{ my_team.entry_id }}</p></div><a href="https://fantasy.premierleague.com/en/entry/{{ my_team.entry_id }}/history" target="_blank" rel="noreferrer">Open in FPL ↗</a></div>
+  {% if my_team.error %}
+    <p class="error">{{ my_team.error }}</p>
+  {% else %}
+    <div class="team-summary"><span><strong>{{ my_team.overall_points or "—" }}</strong> points</span><span><strong>{{ my_team.overall_rank or "—" }}</strong> overall rank</span><span><strong>{{ my_team.event or "Pre-season" }}</strong> gameweek</span></div>
+    {% if my_team.picks_available %}
+    <div class="table-wrap"><table><thead><tr><th>Player</th><th>Position</th><th>Price</th><th>Reliable</th><th>Forward</th><th>Captain</th></tr></thead><tbody>{% for item in my_team.squad %}<tr><td><a href="/players/{{ item.row.player.id }}">{{ item.row.player.full_name }}</a></td><td>{{ item.row.player.position_short }}</td><td>£{{ "%.1f"|format(item.row.snapshot.price) }}</td><td><span class="sheet-chip tier-{{ item.row.snapshot.reliable_tier|lower|replace(' ', '-')|replace('%','') }}">{{ "%.2f"|format(item.row.snapshot.reliable_value) }}</span></td><td><span class="sheet-chip tier-{{ item.row.snapshot.forward_tier|lower|replace(' ', '-')|replace('%','') }}">{{ "%.2f"|format(item.row.snapshot.forward_value) }}</span></td><td>{{ "Captain" if item.pick.get('is_captain') else "Vice-captain" if item.pick.get('is_vice_captain') else "—" }}</td></tr>{% endfor %}</tbody></table></div>
+    {% else %}<p class="muted">Your team is linked. Current picks will appear here when the gameweek squad endpoint becomes available.</p>{% endif %}
+  {% endif %}
+</section>
+{% endif %}
+
 <section class="dashboard-grid">
   <article class="panel">
     <div class="panel-title"><h2>Top reliable value</h2><a href="/players?sort=reliable_value">View all</a></div>

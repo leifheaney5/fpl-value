@@ -35,6 +35,7 @@ from app.services.queries import (
     recent_schema_changes,
 )
 from app.services.refresh import refresh_data
+from app.services.my_team import linked_team_data
 from app.web.auth import safe_next_path, valid_credentials, valid_csrf
 
 
@@ -111,8 +112,10 @@ def logout(request: Request, csrf_token: Annotated[str, Form()] = ""):
 def dashboard(
     request: Request,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     data = dashboard_data(db)
+    data["my_team"] = linked_team_data(db, FPLClient(settings), settings)
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",

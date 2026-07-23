@@ -66,3 +66,17 @@ class FPLClient:
         if not isinstance(payload.get("history", []), list):
             raise ValueError(f"FPL player history for {player_id} was malformed")
         return payload
+
+    def entry(self, entry_id: int) -> dict[str, Any]:
+        payload = self._get_json(f"https://fantasy.premierleague.com/api/entry/{entry_id}/")
+        if not isinstance(payload, dict) or payload.get("id") != entry_id:
+            raise ValueError(f"FPL entry response for {entry_id} was malformed")
+        return payload
+
+    def entry_picks(self, entry_id: int, event_id: int) -> dict[str, Any]:
+        payload = self._get_json(
+            f"https://fantasy.premierleague.com/api/entry/{entry_id}/event/{event_id}/picks/"
+        )
+        if not isinstance(payload, dict) or not isinstance(payload.get("picks"), list):
+            raise ValueError(f"FPL picks response for {entry_id} event {event_id} was malformed")
+        return payload

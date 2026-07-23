@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     fpl_fixtures_url: str = (
         "https://fantasy.premierleague.com/api/fixtures/"
     )
+    fpl_entry_id: int | None = Field(default=None, ge=1)
 
     @property
     def auth_enabled(self) -> bool:
