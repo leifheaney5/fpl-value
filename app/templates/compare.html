@@ -35,8 +35,12 @@
     <tr><td>Rotation risk</td>{% for row in selected %}<td>{{ row.snapshot.rotation_risk or "—" }}</td>{% endfor %}</tr>
     <tr><td>PPG</td>{% for row in selected %}<td>{{ "%.2f"|format(row.snapshot.points_per_game) }}</td>{% endfor %}</tr>
     <tr><td>Points / 90</td>{% for row in selected %}<td>{{ "%.2f"|format(row.snapshot.points_per_90) }}</td>{% endfor %}</tr>
+    <tr><td>Points / start</td>{% for row in selected %}<td>{{ "%.2f"|format(row.snapshot.points_per_start) }}</td>{% endfor %}</tr>
+    <tr><td>Minutes</td>{% for row in selected %}<td>{{ row.snapshot.minutes }}</td>{% endfor %}</tr>
     <tr><td>Start rate</td>{% for row in selected %}<td>{{ "%.0f"|format(row.snapshot.start_rate) }}%</td>{% endfor %}</tr>
+    <tr><td>Expected minutes</td>{% for row in selected %}<td>{{ "%.0f"|format(row.snapshot.expected_minutes) }}</td>{% endfor %}</tr>
     <tr><td>Ownership</td>{% for row in selected %}<td>{{ "%.1f"|format(row.snapshot.ownership) }}%</td>{% endfor %}</tr>
+    <tr><td>Average fixture difficulty</td>{% for row in selected %}<td>{{ "%.1f"|format(row.snapshot.average_fixture_difficulty) }}</td>{% endfor %}</tr>
   </tbody>
 </table>
 </div>

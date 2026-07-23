@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -29,6 +29,26 @@ class Settings(BaseSettings):
     rotation_recent_minutes_weight: float = Field(default=0.15, ge=0, le=1)
     csrf_enabled: bool = True
     collect_gameweek_history: bool = False
+    forward_form_weight: float = Field(default=0.40, ge=0, le=1)
+    forward_ppg_weight: float = Field(default=0.35, ge=0, le=1)
+    forward_p90_weight: float = Field(default=0.25, ge=0, le=1)
+    fixture_difficulty_weight: float = Field(default=0.08, ge=0, le=1)
+    home_advantage_factor: float = Field(default=0.03, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_model_configuration(self) -> "Settings":
+        rotation_total = (
+            self.rotation_season_start_weight
+            + self.rotation_season_minutes_weight
+            + self.rotation_recent_start_weight
+            + self.rotation_recent_minutes_weight
+        )
+        forward_total = self.forward_form_weight + self.forward_ppg_weight + self.forward_p90_weight
+        if rotation_total <= 0 or forward_total <= 0:
+            raise ValueError("Analytics model weights must have a positive total")
+        if bool(self.app_username) != bool(self.app_password):
+            raise ValueError("APP_USERNAME and APP_PASSWORD must be supplied together")
+        return self
     fpl_bootstrap_url: str = (
         "https://fantasy.premierleague.com/api/bootstrap-static/"
     )

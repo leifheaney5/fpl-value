@@ -429,6 +429,11 @@ def refresh_data(
                 expected_minutes_value=exp_minutes,
                 availability=availability,
                 fixtures=next_fixtures,
+                form_weight=settings.forward_form_weight,
+                ppg_weight=settings.forward_ppg_weight,
+                p90_weight=settings.forward_p90_weight,
+                difficulty_weight=settings.fixture_difficulty_weight,
+                home_advantage_factor=settings.home_advantage_factor,
             )
             forward_value = (
                 projected / price if price > 0 else 0.0

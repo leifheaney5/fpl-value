@@ -59,7 +59,10 @@ new Chart(document.getElementById("historyChart"), {
     datasets: [
       { label: "Value", data: {{ history|map(attribute="value")|list|tojson }}, yAxisID: "y" },
       { label: "Reliable value", data: {{ history|map(attribute="reliable_value")|list|tojson }}, yAxisID: "y" },
+      { label: "Forward value", data: {{ history|map(attribute="forward_value")|list|tojson }}, yAxisID: "y" },
       { label: "Price", data: {{ history|map(attribute="price")|list|tojson }}, yAxisID: "price" },
+      { label: "Ownership", data: {{ history|map(attribute="ownership")|list|tojson }}, yAxisID: "ownership" },
+      { label: "Forward rank", data: {{ history|map(attribute="forward_rank")|list|tojson }}, yAxisID: "rank" },
       { label: "Rotation risk", data: {{ history|map(attribute="rotation_risk")|list|tojson }}, yAxisID: "risk" }
     ]
   },
@@ -69,6 +72,8 @@ new Chart(document.getElementById("historyChart"), {
     scales: {
       y: { type: "linear", position: "left" },
       price: { type: "linear", position: "right", grid: { drawOnChartArea: false } },
+      ownership: { type: "linear", display: false, min: 0 },
+      rank: { type: "linear", display: false, reverse: true },
       risk: { type: "linear", display: false, min: 0, max: 100 }
     }
   }

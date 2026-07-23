@@ -12,6 +12,10 @@ Ranks are calculated globally and separately within GKP, DEF, MID, and FWD.
 Historical comparisons select the latest snapshot at or before each 1D, 7D,
 and 30D target.
 
+Forward model weights and fixture assumptions are configurable through the
+`FORWARD_*`, `FIXTURE_DIFFICULTY_WEIGHT`, and `HOME_ADVANTAGE_FACTOR`
+environment variables; defaults sum to the documented heuristic blend.
+
 Set `COLLECT_GAMEWEEK_HISTORY=true` to fetch the public per-player
 `element-summary` histories during refresh. This adds many API requests, so it
 is opt-in and should be enabled only when the extra historical detail is

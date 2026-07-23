@@ -180,22 +180,27 @@ def project_next_fixtures(
     expected_minutes_value: float,
     availability: float,
     fixtures: list[dict[str, Any]],
+    form_weight: float = 0.40,
+    ppg_weight: float = 0.35,
+    p90_weight: float = 0.25,
+    difficulty_weight: float = 0.08,
+    home_advantage_factor: float = 0.03,
 ) -> float:
     if not fixtures:
         return 0.0
 
     baseline = (
-        0.40 * max(0.0, form)
-        + 0.35 * max(0.0, points_per_game)
-        + 0.25 * max(0.0, points_per_90)
+        form_weight * max(0.0, form)
+        + ppg_weight * max(0.0, points_per_game)
+        + p90_weight * max(0.0, points_per_90)
     )
     minute_factor = expected_minutes_value / 90.0
     total = 0.0
 
     for fixture in fixtures:
         difficulty = safe_float(fixture.get("difficulty"), 3.0)
-        difficulty_factor = clamp(1.0 + (3.0 - difficulty) * 0.08, 0.75, 1.25)
-        home_factor = 1.03 if fixture.get("is_home") else 1.0
+        difficulty_factor = clamp(1.0 + (3.0 - difficulty) * difficulty_weight, 0.75, 1.25)
+        home_factor = 1.0 + home_advantage_factor if fixture.get("is_home") else 1.0
         total += (
             baseline
             * minute_factor
