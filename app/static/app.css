@@ -81,6 +81,12 @@ td small { display: block; color: var(--muted); }
 .sort-button { padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--muted); font: inherit; text-transform: inherit; letter-spacing: inherit; }
 .sort-button:hover, .sort-button[aria-sort="ascending"], .sort-button[aria-sort="descending"] { color: var(--accent); }
 .sort-button span { color: var(--accent-2); }
+.sheet-chip { display: inline-flex; min-width: 58px; justify-content: center; padding: .18rem .45rem; border-radius: 6px; font-weight: 800; }
+.tier-top-10 { color: #071019; background: var(--accent); }
+.tier-top-25 { color: #071019; background: #8de7c6; }
+.tier-top-50 { color: var(--text); background: rgba(77,163,255,.35); }
+.tier-bottom-50 { color: var(--muted); background: rgba(135,149,161,.18); }
+.tier-not-ranked { color: var(--muted); background: transparent; }
 .spreadsheet-wrap { max-height: 72vh; }
 .spreadsheet-table { min-width: 1320px; font-size: .88rem; }
 .spreadsheet-table th, .spreadsheet-table td { white-space: nowrap; padding: .55rem .65rem; }
