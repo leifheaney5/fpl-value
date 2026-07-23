@@ -25,4 +25,21 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
   });
+
+  document.querySelectorAll("form.sheet-compare-form").forEach((form) => {
+    const boxes = [...form.querySelectorAll('input[type="checkbox"][name="ids"]')];
+    const count = form.querySelector("[data-selection-count]");
+    const submit = form.querySelector('button[type="submit"]');
+    const maximum = Number(form.dataset.maxSelections || 5);
+    const update = () => {
+      const selected = boxes.filter((box) => box.checked);
+      if (selected.length > maximum) {
+        selected.at(-1).checked = false;
+      }
+      const total = boxes.filter((box) => box.checked).length;
+      count.textContent = total;
+      submit.disabled = total < 2;
+    };
+    boxes.forEach((box) => box.addEventListener("change", update));
+  });
 });
