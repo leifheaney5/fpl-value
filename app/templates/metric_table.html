@@ -16,8 +16,8 @@
       <td>{{ row.team.short_name }}</td>
       <td>{{ row.player.position_short }}</td>
       <td>£{{ "%.1f"|format(row.snapshot.price) }}</td>
-      <td>{{ "%.2f"|format(row.snapshot.reliable_value) }}</td>
-      <td><strong>{{ "%.2f"|format(row.snapshot.forward_value) }}</strong></td>
+      <td><span class="sheet-chip tier-{{ row.snapshot.reliable_tier|lower|replace(' ', '-')|replace('%','') }}">{{ "%.2f"|format(row.snapshot.reliable_value) }}</span></td>
+      <td><span class="sheet-chip tier-{{ row.snapshot.forward_tier|lower|replace(' ', '-')|replace('%','') }}"><strong>{{ "%.2f"|format(row.snapshot.forward_value) }}</strong></span></td>
       <td>{{ "%.1f"|format(row.snapshot.projected_points_5) }}</td>
       <td><span class="risk risk-{{ row.snapshot.rotation_tier|lower|replace(' ', '-') }}">{{ row.snapshot.rotation_risk if row.snapshot.rotation_risk is not none else "—" }}</span></td>
       <td>{{ "%.0f"|format(row.snapshot.expected_minutes) }}</td>

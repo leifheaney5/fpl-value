@@ -52,7 +52,7 @@
           <td><a href="/players/{{ row.player.id }}">{{ row.player.full_name }}</a><small>{{ row.team.short_name }}</small></td>
           <td>{{ row.snapshot.upcoming_fixtures|length }}</td>
           <td>{{ "%.1f"|format(row.snapshot.projected_points_5) }}</td>
-          <td><span class="badge">{{ "%.2f"|format(row.snapshot.forward_value) }}</span></td>
+          <td><span class="badge tier-{{ row.snapshot.forward_tier|lower|replace(' ', '-')|replace('%','') }}">{{ "%.2f"|format(row.snapshot.forward_value) }}</span></td>
         </tr>
       {% endfor %}
       </tbody>
