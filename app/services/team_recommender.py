@@ -97,6 +97,47 @@ def _candidates(rows: list[dict[str, Any]], position: str, strategy: str) -> lis
     return list(unique.values())
 
 
+def _find_feasible_squad(rows: list[dict[str, Any]], budget_units: int) -> list[dict[str, Any]] | None:
+    """Find any legal squad independent of ranking, preventing false no-solution errors."""
+    by_position = {
+        position: sorted(
+            [row for row in rows if row["player"].position_short == position and float(row["snapshot"].price or 0) > 0],
+            key=lambda row: (float(row["snapshot"].price), -_projected_output(row)),
+        )
+        for position in POSITION_COUNTS
+    }
+    if any(len(by_position[position]) < count for position, count in POSITION_COUNTS.items()):
+        return None
+
+    slots = [
+        position
+        for position in sorted(POSITION_COUNTS, key=lambda item: len(by_position[item]))
+        for _ in range(POSITION_COUNTS[position])
+    ]
+
+    def visit(index: int, spent: int, selected: list[dict[str, Any]], clubs: Counter) -> list[dict[str, Any]] | None:
+        if index == len(slots):
+            return selected
+        position = slots[index]
+        selected_ids = {row["player"].id for row in selected}
+        for row in by_position[position]:
+            player = row["player"]
+            if player.id in selected_ids:
+                continue
+            price_units = int(round(float(row["snapshot"].price) * 10))
+            club_id = row["team"].id
+            if spent + price_units > budget_units or clubs[club_id] >= 3:
+                continue
+            clubs[club_id] += 1
+            result = visit(index + 1, spent + price_units, selected + [row], clubs)
+            clubs[club_id] -= 1
+            if result is not None:
+                return result
+        return None
+
+    return visit(0, 0, [], Counter())
+
+
 def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: str = "best_team") -> dict[str, Any]:
     """Build an explainable highest-projected-output FPL squad under real squad rules."""
     if not rows:
@@ -107,7 +148,11 @@ def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: 
         raise ValueError("There are not enough eligible players to build a squad.")
 
     budget_units = int(round(budget * 10))
+    feasible = _find_feasible_squad(rows, budget_units)
+    if feasible is None:
+        raise ValueError("No valid squad fits the selected budget and club limits.")
     states = [(0, 0.0, [], Counter())]
+    beam_failed = False
     for position, count in POSITION_COUNTS.items():
         for _ in range(count):
             next_states = []
@@ -131,7 +176,16 @@ def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: 
             by_ids.update({tuple(row["player"].id for row in state[2]): state for state in diverse})
             states = list(by_ids.values())[:3000]
             if not states:
-                raise ValueError("No valid squad fits the selected budget and club limits.")
+                beam_failed = True
+                break
+        if beam_failed:
+            break
+
+    if beam_failed:
+        selected = feasible
+        spent = sum(int(round(float(row["snapshot"].price) * 10)) for row in selected)
+        score = sum(_score(row, strategy) for row in selected)
+        states = [(spent, score, selected, Counter(row["team"].id for row in selected))]
 
     def team_objective(state: tuple[int, float, list[dict[str, Any]], Counter]) -> tuple[float, float, float]:
         _, lineup, lineup_score = _best_lineup(state[2], strategy)

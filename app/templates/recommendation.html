@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}AI Recommender · FPL Value Studio{% endblock %}
 {% block content %}
-<div class="page-heading"><div><p class="eyebrow">EXPLAINABLE TEAM BUILDER</p><h1>Build the best-value squad.</h1><p>Generate a constrained 15-player squad within your budget using projected output, reliable value, availability, and rotation security.</p></div></div>
+<div class="page-heading"><div><p class="eyebrow">EXPLAINABLE TEAM BUILDER</p><h1>Build the best team.</h1><p>Generate a constrained 15-player squad within your budget, prioritizing projected starting-XI output, captaincy, availability, formation, and bench depth.</p></div></div>
 <form class="recommendation-controls" method="get"><label>Squad budget (£m)<input type="number" name="budget" min="50" max="100" step="0.1" value="{{ budget }}"></label><label>Strategy<select name="strategy">{% for key, item in strategies.items() %}<option value="{{ key }}" {% if strategy == key %}selected{% endif %}>{{ item.label }}</option>{% endfor %}</select></label><button type="submit">Generate recommendation</button></form>
 {% if error %}<p class="error">{{ error }}</p>{% elif recommendation %}
 <section class="cards"><article class="stat"><span>Budget used</span><strong>£{{ "%.1f"|format(recommendation.spent) }}m</strong></article><article class="stat"><span>Remaining</span><strong>£{{ "%.1f"|format(recommendation.remaining) }}m</strong></article><article class="stat"><span>Formation</span><strong>{{ recommendation.formation }}</strong></article><article class="stat"><span>Players</span><strong>15</strong></article></section>
