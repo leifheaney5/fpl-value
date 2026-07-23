@@ -90,6 +90,10 @@ def _candidates(rows: list[dict[str, Any]], position: str, strategy: str) -> lis
     cheapest = sorted(position_rows, key=lambda row: row["snapshot"].price)
     unique = {row["player"].id: row for row in ranked[:30]}
     unique.update({row["player"].id: row for row in cheapest[:10]})
+    for club_id in {row["team"].id for row in position_rows}:
+        club_players = [row for row in cheapest if row["team"].id == club_id]
+        if club_players:
+            unique[club_players[0]["player"].id] = club_players[0]
     return list(unique.values())
 
 
