@@ -12,7 +12,8 @@
       <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
       <button type="submit">Refresh FPL data</button>
     </form>
-    <a class="button secondary" href="/exports/current.xlsx">Export Excel</a>
+    <a class="button secondary" href="/spreadsheet">Open master spreadsheet</a>
+    <a class="button ghost" href="/exports/current.xlsx">Export Excel</a>
     <a class="button ghost" href="/exports/current.csv">Export CSV</a>
   </div>
 </section>

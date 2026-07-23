@@ -185,11 +185,15 @@ def players(
 @router.get("/spreadsheet", response_class=HTMLResponse)
 def spreadsheet(
     request: Request,
+    view: str = "all",
     position: str | None = None,
     max_price: str | None = None,
     max_rotation: str | None = None,
     min_minutes: str | None = None,
     min_starts: str | None = None,
+    min_expected_minutes: str | None = None,
+    min_reliable_percentile: str | None = None,
+    min_forward_percentile: str | None = None,
     min_start_rate: str | None = None,
     min_reliable_value: str | None = None,
     min_forward_value: str | None = None,
@@ -198,12 +202,36 @@ def spreadsheet(
     sort: str = "reliable_value",
     db: Session = Depends(get_db),
 ):
+    views = {
+        "all": ("All Players", "The complete player market with every core rating.", "reliable_value"),
+        "forward": ("Forward Value", "Projected value over the upcoming fixture window.", "forward_value"),
+        "rotation": ("Rotation Risk", "Playing-time security, from safest to riskiest.", "rotation_risk"),
+        "movers": ("Movers", "Players with the largest recent value changes.", "value_movement"),
+        "transfers": ("Transfer Shortlist", "Available, reliable candidates narrowed by your constraints.", "forward_value"),
+    }
+    if view not in views:
+        view = "all"
     values = {"max_price": _optional_number(max_price, float), "max_rotation": _optional_number(max_rotation, float),
               "min_minutes": _optional_number(min_minutes, int), "min_starts": _optional_number(min_starts, int),
               "min_start_rate": _optional_number(min_start_rate, float), "min_reliable_value": _optional_number(min_reliable_value, float),
               "min_forward_value": _optional_number(min_forward_value, float), "max_ownership": _optional_number(max_ownership, float)}
-    rows = filtered_players(db, position=position or None, status=status, sort=sort, **values)
-    return templates.TemplateResponse(request=request, name="spreadsheet.html", context={"rows": rows, "position": position or "", "status": status or "", "sort": sort, **values})
+    advanced = {"min_expected_minutes": _optional_number(min_expected_minutes, int),
+                "min_reliable_percentile": _optional_number(min_reliable_percentile, float),
+                "min_forward_percentile": _optional_number(min_forward_percentile, float)}
+    effective_sort = sort if sort != "reliable_value" or view == "all" else views[view][2]
+    rows = filtered_players(db, position=position or None, status=status, sort=effective_sort, **values)
+    if view == "transfers":
+        rows = [row for row in rows
+                if row["snapshot"].availability_factor > 0
+                and (advanced["min_expected_minutes"] is None or row["snapshot"].expected_minutes >= advanced["min_expected_minutes"])
+                and (advanced["min_reliable_percentile"] is None or (row["snapshot"].reliable_percentile or 0) >= advanced["min_reliable_percentile"])
+                and (advanced["min_forward_percentile"] is None or (row["snapshot"].forward_percentile or 0) >= advanced["min_forward_percentile"])]
+    title, description, _ = views[view]
+    return templates.TemplateResponse(request=request, name="spreadsheet.html", context={
+        "rows": rows, "view": view, "view_title": title, "view_description": description,
+        "position": position or "", "status": status or "", "sort": effective_sort,
+        **values, **advanced,
+    })
 
 
 @router.get("/players/{player_id}", response_class=HTMLResponse)

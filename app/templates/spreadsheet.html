@@ -1,13 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Spreadsheet · FPL Value Studio{% endblock %}
 {% block content %}
-<div class="page-heading"><div><p class="eyebrow">CLASSIC REFERENCE VIEW</p><h1>FPL value spreadsheet.</h1><p>A compact, familiar grid for scanning players. Click a heading to sort; use the filters to narrow the sheet.</p></div><div class="actions"><a class="button secondary" href="/exports/current.xlsx">Download Excel workbook</a><a class="button ghost" href="/players">Player explorer</a></div></div>
+<div class="page-heading"><div><p class="eyebrow">MASTER PLAYER WORKSPACE</p><h1>{{ view_title }}.</h1><p>{{ view_description }} Click a heading to sort; use the filters to narrow the sheet.</p></div><div class="actions"><a class="button secondary" href="/exports/current.xlsx">Download Excel workbook</a></div></div>
+<div class="spreadsheet-tabs" aria-label="Spreadsheet views">{% for key, label in [("all", "All Players"), ("forward", "Forward Value"), ("rotation", "Rotation Risk"), ("movers", "Movers"), ("transfers", "Transfer Shortlist")] %}<a class="spreadsheet-tab {% if view == key %}active{% endif %}" href="/spreadsheet?view={{ key }}">{{ label }}</a>{% endfor %}</div>
 <form class="filters" method="get">
+  <input type="hidden" name="view" value="{{ view }}">
   <label>Position<select name="position"><option value="">All</option>{% for item in ["GKP","DEF","MID","FWD"] %}<option value="{{ item }}" {% if position == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></label>
   <label>Max price<input type="number" step="0.1" name="max_price" value="{{ max_price or '' }}"></label>
   <label>Max risk<input type="number" step="1" name="max_rotation" value="{{ max_rotation or '' }}"></label>
   <label>Min minutes<input type="number" name="min_minutes" value="{{ min_minutes or '' }}"></label>
   <label>Min starts<input type="number" name="min_starts" value="{{ min_starts or '' }}"></label>
+  <label>Min expected minutes<input type="number" name="min_expected_minutes" value="{{ min_expected_minutes or '' }}"></label>
+  <label>Min reliable percentile<input type="number" step="1" name="min_reliable_percentile" value="{{ min_reliable_percentile or '' }}"></label>
+  <label>Min forward percentile<input type="number" step="1" name="min_forward_percentile" value="{{ min_forward_percentile or '' }}"></label>
   <label>Max ownership<input type="number" step="0.1" name="max_ownership" value="{{ max_ownership or '' }}"></label>
   <label>Status<select name="status"><option value="">Any</option>{% for item in ["a","d","i","s","u","n"] %}<option value="{{ item }}" {% if status == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></label>
   <button type="submit">Apply filters</button>

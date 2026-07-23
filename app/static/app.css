@@ -93,6 +93,9 @@ td small { display: block; color: var(--muted); }
 .spreadsheet-table th:first-child, .spreadsheet-table td:first-child { position: sticky; left: 0; z-index: 3; background: #102131; }
 .spreadsheet-table td:first-child { background: var(--panel); }
 .sheet-note { color: var(--muted); font-size: .85rem; margin: .8rem 0; }
+.spreadsheet-tabs { display: flex; flex-wrap: wrap; gap: .45rem; margin: 1rem 0 .75rem; }
+.spreadsheet-tab { padding: .55rem .8rem; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: var(--panel); font-weight: 750; }
+.spreadsheet-tab:hover, .spreadsheet-tab.active { color: #071019; background: var(--accent); border-color: var(--accent); }
 .data-table a { color: var(--accent); font-weight: 700; }
 .badge, .risk { display: inline-flex; min-width: 56px; justify-content: center; padding: .22rem .5rem; border-radius: 999px; background: #20364a; font-weight: 750; }
 .risk-low { background: rgba(43,214,123,.18); color: var(--green); }
