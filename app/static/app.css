@@ -117,6 +117,10 @@ td small { display: block; color: var(--muted); }
 .legend-swatch.team { background: var(--accent); }
 .legend-swatch.average { background: var(--accent-2); }
 .legend-swatch.top { background: var(--orange); }
+.recommendation-controls { display: flex; align-items: end; gap: .75rem; max-width: 420px; margin: 1rem 0; }
+.recommendation-controls label { flex: 1; }
+.recommendation-badge { display: inline-flex; margin-left: .35rem; width: 20px; height: 20px; align-items: center; justify-content: center; border-radius: 50%; color: #071019; background: var(--accent); font-size: .7rem; font-weight: 900; }
+.recommender-note { margin-top: 1rem; }
 .compare-launcher { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin: 1rem 0; }
 .compare-launcher h2 { margin: .25rem 0; }
 .compare-inline-form { display: flex; align-items: end; gap: .6rem; min-width: min(520px, 100%); }

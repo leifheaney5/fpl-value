@@ -36,6 +36,7 @@ from app.services.queries import (
 )
 from app.services.refresh import refresh_data
 from app.services.my_team import linked_team_data
+from app.services.team_recommender import recommend_team
 from app.web.auth import safe_next_path, valid_credentials, valid_csrf
 
 
@@ -313,6 +314,23 @@ def my_team_page(
         name="my_team.html",
         context={"my_team": linked_team_data(db, FPLClient(settings), settings)},
     )
+
+
+@router.get("/recommendation", response_class=HTMLResponse)
+def recommendation_page(
+    request: Request,
+    budget: str = "100",
+    db: Session = Depends(get_db),
+):
+    budget_value = _optional_number(budget, float) or 100.0
+    budget_value = max(50.0, min(100.0, budget_value))
+    recommendation = None
+    error = None
+    try:
+        recommendation = recommend_team(latest_rows(db), budget_value)
+    except ValueError as exc:
+        error = str(exc)
+    return templates.TemplateResponse(request=request, name="recommendation.html", context={"recommendation": recommendation, "error": error, "budget": budget_value})
 
 
 @router.get("/movers", response_class=HTMLResponse)
