@@ -15,6 +15,7 @@ FORMATIONS = {
     "5-4-1": {"DEF": 5, "MID": 4, "FWD": 1},
 }
 STRATEGIES = {
+    "best_team": {"label": "Best Team", "projected": .84, "raw": .03, "reliable": .06, "forward": .07, "availability": 4.0, "risk": .025, "ownership": 0.0},
     "balanced": {"label": "Balanced", "projected": .60, "raw": .15, "reliable": .15, "forward": .10, "availability": 2.0, "risk": .015, "ownership": 0.0},
     "upside": {"label": "Maximum Upside", "projected": .78, "raw": .08, "reliable": .04, "forward": .10, "availability": 1.0, "risk": .005, "ownership": 0.0},
     "safe": {"label": "Safe Starters", "projected": .42, "raw": .08, "reliable": .28, "forward": .07, "availability": 3.0, "risk": .04, "ownership": .0},
@@ -23,10 +24,23 @@ STRATEGIES = {
 }
 
 
-def _score(row: dict[str, Any], strategy: str = "balanced") -> float:
-    weights = STRATEGIES.get(strategy, STRATEGIES["balanced"])
+def _projected_output(row: dict[str, Any]) -> float:
     snapshot = row["snapshot"]
-    projected = float(snapshot.projected_points_5 or 0)
+    projected = float(getattr(snapshot, "projected_points_5", 0) or 0)
+    if projected <= 0:
+        projected = float(getattr(snapshot, "points_per_game", 0) or 0) * 5
+    expected_minutes = float(getattr(snapshot, "expected_minutes", 0) or 0)
+    minutes_factor = min(expected_minutes / 450, 1.0) if expected_minutes else 1.0
+    availability = float(getattr(snapshot, "availability_factor", 0) or 0)
+    if availability <= 0:
+        return 0.0
+    return projected * (.70 + (.30 * minutes_factor)) * availability
+
+
+def _score(row: dict[str, Any], strategy: str = "best_team") -> float:
+    weights = STRATEGIES.get(strategy, STRATEGIES["best_team"])
+    snapshot = row["snapshot"]
+    projected = _projected_output(row)
     raw_efficiency = float(snapshot.total_points or 0) / max(float(snapshot.price or 1), 1)
     reliable = float(snapshot.reliable_value or 0)
     forward = float(snapshot.forward_value or 0)
@@ -45,6 +59,31 @@ def _score(row: dict[str, Any], strategy: str = "balanced") -> float:
     )
 
 
+def _best_lineup(selected: list[dict[str, Any]], strategy: str) -> tuple[str | None, list[dict[str, Any]], float]:
+    by_position = {
+        position: sorted(
+            [row for row in selected if row["player"].position_short == position],
+            key=lambda row: _projected_output(row),
+            reverse=True,
+        )
+        for position in POSITION_COUNTS
+    }
+    best_formation = None
+    best_starting: list[dict[str, Any]] = []
+    best_score = -1.0
+    for formation, shape in FORMATIONS.items():
+        starting = by_position["GKP"][:1] + by_position["DEF"][:shape["DEF"]] + by_position["MID"][:shape["MID"]] + by_position["FWD"][:shape["FWD"]]
+        if len(starting) != 11:
+            continue
+        captain = max(starting, key=_projected_output)
+        score = sum(_projected_output(row) for row in starting) + _projected_output(captain)
+        if strategy in {"safe", "best_team"}:
+            score += sum(_score(row, strategy) for row in starting) * .05
+        if score > best_score:
+            best_formation, best_starting, best_score = formation, starting, score
+    return best_formation, best_starting, best_score
+
+
 def _candidates(rows: list[dict[str, Any]], position: str, strategy: str) -> list[dict[str, Any]]:
     position_rows = [row for row in rows if row["player"].position_short == position and row["snapshot"].price > 0]
     ranked = sorted(position_rows, key=lambda row: _score(row, strategy), reverse=True)
@@ -54,11 +93,11 @@ def _candidates(rows: list[dict[str, Any]], position: str, strategy: str) -> lis
     return list(unique.values())
 
 
-def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: str = "balanced") -> dict[str, Any]:
-    """Build an explainable best-value FPL squad under the real squad rules."""
+def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: str = "best_team") -> dict[str, Any]:
+    """Build an explainable highest-projected-output FPL squad under real squad rules."""
     if not rows:
         raise ValueError("No player data is available for recommendations.")
-    strategy = strategy if strategy in STRATEGIES else "balanced"
+    strategy = strategy if strategy in STRATEGIES else "best_team"
     candidates = {position: _candidates(rows, position, strategy) for position in POSITION_COUNTS}
     if any(len(items) < count for position, count in POSITION_COUNTS.items() for items in [candidates[position]]):
         raise ValueError("There are not enough eligible players to build a squad.")
@@ -86,17 +125,17 @@ def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: 
             if not states:
                 raise ValueError("No valid squad fits the selected budget and club limits.")
 
-    spent, score, selected, _ = max(states, key=lambda state: (state[1], -state[0]))
-    selected_by_position = {position: sorted([row for row in selected if row["player"].position_short == position], key=lambda row: _score(row, strategy), reverse=True) for position in POSITION_COUNTS}
-    best_formation = None
-    best_starting = []
-    for formation, shape in FORMATIONS.items():
-        starting = selected_by_position["GKP"][:1] + selected_by_position["DEF"][:shape["DEF"]] + selected_by_position["MID"][:shape["MID"]] + selected_by_position["FWD"][:shape["FWD"]]
-        if len(starting) == 11 and (best_formation is None or sum(_score(row, strategy) for row in starting) > sum(_score(row, strategy) for row in best_starting)):
-            best_formation, best_starting = formation, starting
+    def team_objective(state: tuple[int, float, list[dict[str, Any]], Counter]) -> tuple[float, float, float]:
+        _, lineup, lineup_score = _best_lineup(state[2], strategy)
+        starting_ids = {row["player"].id for row in lineup}
+        bench_output = sum(_projected_output(row) for row in state[2] if row["player"].id not in starting_ids)
+        return (lineup_score + (bench_output * .05), state[1], -state[0])
+
+    spent, score, selected, _ = max(states, key=team_objective)
+    best_formation, best_starting, lineup_score = _best_lineup(selected, strategy)
     starting_ids = {row["player"].id for row in best_starting}
-    captain = max(best_starting, key=lambda row: _score(row, strategy))
-    vice_captain = max((row for row in best_starting if row["player"].id != captain["player"].id), key=lambda row: _score(row, strategy))
+    captain = max(best_starting, key=_projected_output)
+    vice_captain = max((row for row in best_starting if row["player"].id != captain["player"].id), key=_projected_output)
 
     def decorate(row: dict[str, Any], role: str) -> dict[str, Any]:
         snapshot = row["snapshot"]
@@ -111,11 +150,11 @@ def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: 
         "budget": budget,
         "spent": round(spent / 10, 1),
         "remaining": round(budget - spent / 10, 1),
-        "score": round(score, 2),
+        "score": round(lineup_score, 2),
         "strategy": strategy,
         "strategy_label": STRATEGIES[strategy]["label"],
         "formation": best_formation,
         "starting": [decorate(row, "Starting XI") for row in best_starting],
-        "bench": [decorate(row, "Bench") for row in sorted((row for row in selected if row["player"].id not in starting_ids), key=_score, reverse=True)],
-        "method": f"{STRATEGIES[strategy]['label']} mode: projected points, reliable value, raw efficiency, availability, rotation security, and ownership were weighted according to the selected strategy; constrained by FPL squad rules.",
+        "bench": [decorate(row, "Bench") for row in sorted((row for row in selected if row["player"].id not in starting_ids), key=lambda row: _score(row, strategy), reverse=True)],
+        "method": f"{STRATEGIES[strategy]['label']} mode: the squad is selected to maximize projected starting-XI output, with captaincy, expected minutes, availability, formation, and bench depth considered before value metrics are used as tie-breakers; constrained by FPL squad rules.",
     }

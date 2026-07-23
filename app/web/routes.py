@@ -320,7 +320,7 @@ def my_team_page(
 def recommendation_page(
     request: Request,
     budget: str = "100",
-    strategy: str = "balanced",
+    strategy: str = "best_team",
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):

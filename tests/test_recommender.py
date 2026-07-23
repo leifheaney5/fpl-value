@@ -21,7 +21,7 @@ def test_recommender_builds_valid_fpl_squad_under_budget():
             })
             player_id += 1
 
-    result = recommend_team(rows, 100.0)
+    result = recommend_team(rows, 100.0, "best_team")
     selected = result["starting"] + result["bench"]
 
     assert len(selected) == 15
