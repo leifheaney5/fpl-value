@@ -1,6 +1,8 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
+from io import BytesIO
+from openpyxl import load_workbook
 
 from app.db.base import Base
 from app.db.session import get_db
@@ -27,8 +29,13 @@ def test_web_routes_health_exports_and_new_pages(tmp_path):
         login_page = client.get("/login")
         assert login_page.status_code == 200
         assert client.post("/login", data={"username": "x", "password": "y", "csrf_token": "bad"}).status_code == 401
-        assert client.get("/exports/current.csv").status_code == 200
-        assert client.get("/exports/current.xlsx").headers["content-type"].startswith("application/vnd.openxmlformats")
+        csv_response = client.get("/exports/current.csv")
+        assert csv_response.status_code == 200
+        assert b"Player" in csv_response.content
+        xlsx_response = client.get("/exports/current.xlsx")
+        assert xlsx_response.headers["content-type"].startswith("application/vnd.openxmlformats")
+        workbook = load_workbook(BytesIO(xlsx_response.content), read_only=True)
+        assert {"Dashboard", "Value Rankings", "Forward Value", "Rotation Risk", "Movers", "Fixtures", "Schema Changes", "Guide"}.issubset(workbook.sheetnames)
     finally:
         app.dependency_overrides.clear()
 

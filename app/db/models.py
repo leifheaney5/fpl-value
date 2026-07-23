@@ -136,6 +136,8 @@ class PlayerSnapshot(Base):
         ),
         Index("ix_snapshot_player_time", "player_id", "captured_at"),
         Index("ix_snapshot_value_rank", "captured_at", "value_rank"),
+        Index("ix_snapshot_reliable_rank", "captured_at", "reliable_rank"),
+        Index("ix_snapshot_forward_rank", "captured_at", "forward_rank"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

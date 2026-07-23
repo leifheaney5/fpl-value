@@ -1,11 +1,12 @@
 from datetime import datetime, timezone
+import pytest
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from app.config import Settings
 from app.db.base import Base
-from app.db.models import PlayerSnapshot
+from app.db.models import PlayerSnapshot, RefreshRun, SchemaChange
 from app.services.refresh import refresh_data
 
 
@@ -98,3 +99,25 @@ def test_refresh_pipeline(tmp_path):
         assert snapshot.value == 10.0
         assert snapshot.reliable_value > 0
         assert snapshot.forward_value > 0
+
+
+def test_refresh_records_schema_removals_and_rejects_overlap(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'schema.db'}", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(engine, expire_on_commit=False)
+    settings = Settings(database_url=f"sqlite:///{tmp_path / 'schema.db'}")
+
+    class ChangedClient(FakeClient):
+        def bootstrap(self):
+            payload = super().bootstrap()
+            payload["elements"][0].pop("ict_index")
+            return payload
+
+    with Session() as db:
+        refresh_data(db, settings, FakeClient())
+        refresh_data(db, settings, ChangedClient())
+        assert db.query(SchemaChange).filter_by(change_type="Removed", field_name="ict_index").count() == 1
+        db.add(RefreshRun(started_at=datetime.now(timezone.utc), status="running"))
+        db.commit()
+        with pytest.raises(RuntimeError, match="already in progress"):
+            refresh_data(db, settings, FakeClient())
