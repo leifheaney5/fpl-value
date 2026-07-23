@@ -66,3 +66,24 @@ def linked_team_data(db: Session, client: FPLClient, settings: Settings) -> dict
         "performance": performance,
         "benchmark_status": "The public FPL payload does not currently provide top-10k or top-10% performance series.",
     }
+
+
+def transfer_plan(team: dict[str, Any] | None, recommendation: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not team or not team.get("picks_available") or not recommendation:
+        return []
+    current = {item["row"]["player"].id: item["row"] for item in team["squad"]}
+    suggested = [item["row"] for item in recommendation["starting"] + recommendation["bench"]]
+    incoming = [row for row in suggested if row["player"].id not in current]
+    outgoing = [row for row in current.values() if row["player"].id not in {item["player"].id for item in suggested}]
+    plan = []
+    for position in ("GKP", "DEF", "MID", "FWD"):
+        sellers = [row for row in outgoing if row["player"].position_short == position]
+        buyers = [row for row in incoming if row["player"].position_short == position]
+        for seller, buyer in zip(sellers, buyers):
+            plan.append({
+                "out": seller,
+                "in": buyer,
+                "price_change": round(float(buyer["snapshot"].price) - float(seller["snapshot"].price), 1),
+                "reason": "Higher recommender score in the selected strategy.",
+            })
+    return plan

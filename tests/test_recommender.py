@@ -34,3 +34,5 @@ def test_recommender_builds_valid_fpl_squad_under_budget():
         club_id = item["row"]["team"].id
         club_counts[club_id] = club_counts.get(club_id, 0) + 1
     assert max(club_counts.values()) <= 3
+    assert recommend_team(rows, 100.0, "safe")["strategy"] == "safe"
+    assert recommend_team(rows, 100.0, "differential")["strategy"] == "differential"

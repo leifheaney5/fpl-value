@@ -35,8 +35,8 @@ from app.services.queries import (
     recent_schema_changes,
 )
 from app.services.refresh import refresh_data
-from app.services.my_team import linked_team_data
-from app.services.team_recommender import recommend_team
+from app.services.my_team import linked_team_data, transfer_plan
+from app.services.team_recommender import STRATEGIES, recommend_team
 from app.web.auth import safe_next_path, valid_credentials, valid_csrf
 
 
@@ -320,17 +320,20 @@ def my_team_page(
 def recommendation_page(
     request: Request,
     budget: str = "100",
+    strategy: str = "balanced",
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     budget_value = _optional_number(budget, float) or 100.0
     budget_value = max(50.0, min(100.0, budget_value))
     recommendation = None
     error = None
     try:
-        recommendation = recommend_team(latest_rows(db), budget_value)
+        recommendation = recommend_team(latest_rows(db), budget_value, strategy)
     except ValueError as exc:
         error = str(exc)
-    return templates.TemplateResponse(request=request, name="recommendation.html", context={"recommendation": recommendation, "error": error, "budget": budget_value})
+    team = linked_team_data(db, FPLClient(settings), settings)
+    return templates.TemplateResponse(request=request, name="recommendation.html", context={"recommendation": recommendation, "error": error, "budget": budget_value, "strategy": strategy, "strategies": STRATEGIES, "my_team": team, "transfer_plan": transfer_plan(team, recommendation)})
 
 
 @router.get("/movers", response_class=HTMLResponse)
