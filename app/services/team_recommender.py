@@ -125,7 +125,11 @@ def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: 
                     updated_clubs[club_id] += 1
                     next_states.append((spent + price_units, score + _score(row, strategy), selected + [row], updated_clubs))
             next_states.sort(key=lambda state: (state[1], -state[0]), reverse=True)
-            states = next_states[:1200]
+            retained = next_states[:2200]
+            diverse = sorted(next_states, key=lambda state: (len(state[3]), state[1], -state[0]), reverse=True)[:800]
+            by_ids = {tuple(row["player"].id for row in state[2]): state for state in retained}
+            by_ids.update({tuple(row["player"].id for row in state[2]): state for state in diverse})
+            states = list(by_ids.values())[:3000]
             if not states:
                 raise ValueError("No valid squad fits the selected budget and club limits.")
 
