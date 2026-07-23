@@ -49,8 +49,8 @@ def _candidates(rows: list[dict[str, Any]], position: str, strategy: str) -> lis
     position_rows = [row for row in rows if row["player"].position_short == position and row["snapshot"].price > 0]
     ranked = sorted(position_rows, key=lambda row: _score(row, strategy), reverse=True)
     cheapest = sorted(position_rows, key=lambda row: row["snapshot"].price)
-    unique = {row["player"].id: row for row in ranked[:32]}
-    unique.update({row["player"].id: row for row in cheapest[:10]})
+    unique = {row["player"].id: row for row in ranked[:20]}
+    unique.update({row["player"].id: row for row in cheapest[:5]})
     return list(unique.values())
 
 
@@ -82,7 +82,7 @@ def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: 
                     updated_clubs[club_id] += 1
                     next_states.append((spent + price_units, score + _score(row, strategy), selected + [row], updated_clubs))
             next_states.sort(key=lambda state: (state[1], -state[0]), reverse=True)
-            states = next_states[:5000]
+            states = next_states[:1200]
             if not states:
                 raise ValueError("No valid squad fits the selected budget and club limits.")
 
