@@ -15,6 +15,17 @@ Provide `DATABASE_URL`, `SESSION_SECRET`, and (for a private deployment)
 checks `APP_TIMEZONE` and `REFRESH_HOUR` to avoid duplicate daylight-saving
 refreshes.
 
-Verify `/health`, then run `python -m app.cli refresh --force` once. Railway
-deployment cannot be claimed from this checkout without authenticated Railway
-access and a verified public endpoint.
+Verify `/health`, then run the first refresh inside the deployed container:
+
+```bash
+railway ssh --service web -- python -m app.cli refresh --force
+```
+
+Do not use `railway run` for this production operation: it runs the command on
+the local machine with Railway variables injected and therefore requires local
+Python, SQLAlchemy, and `psycopg` dependencies. The importer likewise requires
+an actual local history directory, for example:
+
+```bash
+python -m app.cli import-history --directory "C:\\Users\\you\\Documents\\fpl_exports\\history"
+```

@@ -78,7 +78,15 @@ The local credentials in `docker-compose.yml` are:
 admin / admin
 ```
 
-Run the first refresh from the dashboard.
+Run the first production refresh from the dashboard, or execute inside the
+deployed web container:
+
+```bash
+railway ssh --service web -- python -m app.cli refresh --force
+```
+
+`railway run` only injects Railway variables into a command running on your
+local machine; it does not run inside the deployed container.
 
 ## Run locally without Docker
 
@@ -248,7 +256,11 @@ The Railway application uses PostgreSQL snapshots as its source of truth.
 Import supported CSV snapshots with:
 
 ```bash
-python -m app.cli import-history --directory "/path/to/fpl_exports/history"
+python -m app.cli import-history --directory "C:\\Users\\you\\Documents\\fpl_exports\\history"
+
+Replace the example path with the folder that actually contains the legacy
+CSV files. The importer reports a missing directory instead of silently doing
+nothing.
 ```
 
 Imports match rows by Player ID, preserve timestamps, retain the original row
