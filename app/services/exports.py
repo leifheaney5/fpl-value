@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import date, datetime, time
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
@@ -40,6 +41,13 @@ EXPORT_COLUMNS = [
 ]
 
 
+def _excel_value(value):
+    """Convert timezone-aware dates to Excel-compatible naive values."""
+    if isinstance(value, (datetime, time)) and value.tzinfo is not None:
+        return value.replace(tzinfo=None)
+    return value
+
+
 def csv_bytes(db: Session) -> bytes:
     rows = latest_rows(db)
     buffer = io.StringIO()
@@ -75,7 +83,7 @@ def xlsx_bytes(db: Session) -> bytes:
             cell.fill = header_fill
             cell.font = header_font
         for row in values:
-            target.append([getter(row) for _, getter in columns])
+            target.append([_excel_value(getter(row)) for _, getter in columns])
             tier_index = next((i for i, (name, _) in enumerate(columns, start=1) if name in {"Rotation Tier", "Tier"}), None)
             if tier_index:
                 tier_cell = target.cell(target.max_row, tier_index)
@@ -99,12 +107,12 @@ def xlsx_bytes(db: Session) -> bytes:
     fixture_sheet = workbook.create_sheet("Fixtures")
     fixture_sheet.append(["Gameweek", "Home Team", "Away Team", "Kickoff", "Finished"])
     for fixture in fixtures:
-        fixture_sheet.append([fixture.event, fixture.team_h, fixture.team_a, fixture.kickoff_time, fixture.finished])
+        fixture_sheet.append([_excel_value(value) for value in [fixture.event, fixture.team_h, fixture.team_a, fixture.kickoff_time, fixture.finished]])
     changes = db.scalars(select(SchemaChange).order_by(SchemaChange.detected_at.desc())).all()
     schema_sheet = workbook.create_sheet("Schema Changes")
     schema_sheet.append(["Detected", "Category", "Change", "Field"])
     for change in changes:
-        schema_sheet.append([change.detected_at, change.category, change.change_type, change.field_name])
+        schema_sheet.append([_excel_value(value) for value in [change.detected_at, change.category, change.change_type, change.field_name]])
     guide = workbook.create_sheet("Guide")
     guide.append(["Metric", "Definition"])
     guide.append(["Value", "Total FPL points divided by current price in millions."])
