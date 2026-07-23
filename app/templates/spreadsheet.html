@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Spreadsheet · FPL Value Studio{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">CLASSIC REFERENCE VIEW</p><h1>FPL value spreadsheet.</h1><p>A compact, familiar grid for scanning players. Click a heading to sort; use the filters to narrow the sheet.</p></div><div class="actions"><a class="button secondary" href="/exports/current.xlsx">Download Excel workbook</a><a class="button ghost" href="/players">Player explorer</a></div></div>
+<form class="filters" method="get">
+  <label>Position<select name="position"><option value="">All</option>{% for item in ["GKP","DEF","MID","FWD"] %}<option value="{{ item }}" {% if position == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></label>
+  <label>Max price<input type="number" step="0.1" name="max_price" value="{{ max_price or '' }}"></label>
+  <label>Max risk<input type="number" step="1" name="max_rotation" value="{{ max_rotation or '' }}"></label>
+  <label>Min minutes<input type="number" name="min_minutes" value="{{ min_minutes or '' }}"></label>
+  <label>Min starts<input type="number" name="min_starts" value="{{ min_starts or '' }}"></label>
+  <label>Max ownership<input type="number" step="0.1" name="max_ownership" value="{{ max_ownership or '' }}"></label>
+  <label>Status<select name="status"><option value="">Any</option>{% for item in ["a","d","i","s","u","n"] %}<option value="{{ item }}" {% if status == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></label>
+  <button type="submit">Apply filters</button>
+</form>
+<div class="sheet-note">{{ rows|length }} players shown · values are from the latest successful refresh · headings are sortable</div>
+<div class="table-wrap spreadsheet-wrap"><table class="data-table sortable-table spreadsheet-table"><thead><tr>{% for label in ["Player","Team","Pos","Price","Points","Value","Reliable","Forward","Risk","PPG","P/90","Start %","Minutes","Ownership","1D Value"] %}<th><button type="button" class="sort-button" aria-sort="none">{{ label }} <span aria-hidden="true">↕</span></button></th>{% endfor %}</tr></thead><tbody>
+{% for row in rows %}<tr>
+  <td data-sort-value="{{ row.player.full_name|lower }}"><a href="/players/{{ row.player.id }}">{{ row.player.full_name }}</a></td><td data-sort-value="{{ row.team.name|lower }}">{{ row.team.short_name }}</td><td data-sort-value="{{ row.player.position_short }}">{{ row.player.position_short }}</td><td data-sort-value="{{ row.snapshot.price }}">{{ "%.1f"|format(row.snapshot.price) }}</td><td data-sort-value="{{ row.snapshot.total_points }}">{{ row.snapshot.total_points }}</td><td data-sort-value="{{ row.snapshot.value }}">{{ "%.2f"|format(row.snapshot.value) }}</td><td data-sort-value="{{ row.snapshot.reliable_value }}">{{ "%.2f"|format(row.snapshot.reliable_value) }}</td><td data-sort-value="{{ row.snapshot.forward_value }}">{{ "%.2f"|format(row.snapshot.forward_value) }}</td><td data-sort-value="{{ row.snapshot.rotation_risk if row.snapshot.rotation_risk is not none else '' }}">{{ row.snapshot.rotation_risk or "—" }}</td><td data-sort-value="{{ row.snapshot.points_per_game }}">{{ "%.2f"|format(row.snapshot.points_per_game) }}</td><td data-sort-value="{{ row.snapshot.points_per_90 }}">{{ "%.2f"|format(row.snapshot.points_per_90) }}</td><td data-sort-value="{{ row.snapshot.start_rate }}">{{ "%.0f"|format(row.snapshot.start_rate) }}%</td><td data-sort-value="{{ row.snapshot.minutes }}">{{ row.snapshot.minutes }}</td><td data-sort-value="{{ row.snapshot.ownership }}">{{ "%.1f"|format(row.snapshot.ownership) }}%</td><td data-sort-value="{{ row.history['1D'].delta_value if row.history['1D'].delta_value is not none else '' }}">{{ "%+.2f"|format(row.history['1D'].delta_value) if row.history['1D'].delta_value is not none else "—" }}</td>
+</tr>{% else %}<tr><td colspan="15" class="empty">No players match these filters.</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}

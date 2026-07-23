@@ -2,7 +2,8 @@
 {% block title %}Players · FPL Value Studio{% endblock %}
 {% block content %}
 <div class="page-heading">
-  <div><p class="eyebrow">PLAYER EXPLORER</p><h1>Search and filter the market.</h1></div>
+  <div><p class="eyebrow">PLAYER EXPLORER</p><h1>Search and filter the market.</h1><p>Use the filters to narrow the list, then click any column heading to sort it instantly.</p></div>
+  <div class="actions"><a class="button secondary" href="/spreadsheet">Open spreadsheet view</a><a class="button ghost" href="/exports/current.xlsx">Download Excel</a></div>
 </div>
 
 <form class="filters" method="get">
@@ -48,42 +49,39 @@
 </form>
 
 <div class="table-wrap">
-<table class="data-table">
+<table class="data-table sortable-table">
   <thead>
     <tr>
-      <th>Player</th><th>Pos</th><th>Price</th><th>Points</th>
-      <th>Value</th><th>Reliable</th><th>Forward</th><th>Risk</th>
-      <th>1D Δ Value</th><th>1D Δ Price</th>
-      <th>PPG</th><th>P/90</th><th>Start rate</th><th>Ownership</th>
+      {% for label in ["Player", "Pos", "Price", "Points", "Value", "Reliable", "Forward", "Risk", "1D Δ Value", "1D Δ Price", "PPG", "P/90", "Start rate", "Ownership"] %}<th><button type="button" class="sort-button" aria-sort="none">{{ label }} <span aria-hidden="true">↕</span></button></th>{% endfor %}
     </tr>
   </thead>
   <tbody>
   {% for row in rows %}
     <tr>
-      <td><a href="/players/{{ row.player.id }}">{{ row.player.full_name }}</a><small>{{ row.team.name }}</small></td>
-      <td>{{ row.player.position_short }}</td>
-      <td>£{{ "%.1f"|format(row.snapshot.price) }}</td>
-      <td>{{ row.snapshot.total_points }}</td>
-      <td>{{ "%.2f"|format(row.snapshot.value) }}</td>
-      <td><strong>{{ "%.2f"|format(row.snapshot.reliable_value) }}</strong></td>
-      <td>{{ "%.2f"|format(row.snapshot.forward_value) }}</td>
-      <td><span class="risk risk-{{ row.snapshot.rotation_tier|lower|replace(' ', '-') }}">{{ row.snapshot.rotation_risk if row.snapshot.rotation_risk is not none else "—" }}</span></td>
-      <td>
+      <td data-sort-value="{{ row.player.full_name|lower }}"><a href="/players/{{ row.player.id }}">{{ row.player.full_name }}</a><small>{{ row.team.name }}</small></td>
+      <td data-sort-value="{{ row.player.position_short }}">{{ row.player.position_short }}</td>
+      <td data-sort-value="{{ row.snapshot.price }}">£{{ "%.1f"|format(row.snapshot.price) }}</td>
+      <td data-sort-value="{{ row.snapshot.total_points }}">{{ row.snapshot.total_points }}</td>
+      <td data-sort-value="{{ row.snapshot.value }}">{{ "%.2f"|format(row.snapshot.value) }}</td>
+      <td data-sort-value="{{ row.snapshot.reliable_value }}"><strong>{{ "%.2f"|format(row.snapshot.reliable_value) }}</strong></td>
+      <td data-sort-value="{{ row.snapshot.forward_value }}">{{ "%.2f"|format(row.snapshot.forward_value) }}</td>
+      <td data-sort-value="{{ row.snapshot.rotation_risk if row.snapshot.rotation_risk is not none else '' }}"><span class="risk risk-{{ row.snapshot.rotation_tier|lower|replace(' ', '-') }}">{{ row.snapshot.rotation_risk if row.snapshot.rotation_risk is not none else "—" }}</span></td>
+      <td data-sort-value="{{ row.history['1D'].delta_value if row.history['1D'].delta_value is not none else '' }}">
         {% set change = row.history["1D"].delta_value %}
         <span class="movement {{ row.history['1D'].value_direction|lower|replace(' ', '-') }}">
           {{ "%+.2f"|format(change) if change is not none else "—" }}
         </span>
       </td>
-      <td>
+      <td data-sort-value="{{ row.history['1D'].delta_price if row.history['1D'].delta_price is not none else '' }}">
         {% set price_change = row.history["1D"].delta_price %}
         <span class="movement {{ row.history['1D'].price_direction|lower|replace(' ', '-') }}">
           {{ "%+.1f"|format(price_change) if price_change is not none else "—" }}
         </span>
       </td>
-      <td>{{ "%.2f"|format(row.snapshot.points_per_game) }}</td>
-      <td>{{ "%.2f"|format(row.snapshot.points_per_90) }}</td>
-      <td>{{ "%.0f"|format(row.snapshot.start_rate) }}%</td>
-      <td>{{ "%.1f"|format(row.snapshot.ownership) }}%</td>
+      <td data-sort-value="{{ row.snapshot.points_per_game }}">{{ "%.2f"|format(row.snapshot.points_per_game) }}</td>
+      <td data-sort-value="{{ row.snapshot.points_per_90 }}">{{ "%.2f"|format(row.snapshot.points_per_90) }}</td>
+      <td data-sort-value="{{ row.snapshot.start_rate }}">{{ "%.0f"|format(row.snapshot.start_rate) }}%</td>
+      <td data-sort-value="{{ row.snapshot.ownership }}">{{ "%.1f"|format(row.snapshot.ownership) }}%</td>
     </tr>
   {% else %}
     <tr><td colspan="14" class="empty">No players match these filters.</td></tr>

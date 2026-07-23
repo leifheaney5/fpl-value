@@ -78,6 +78,15 @@ td small { display: block; color: var(--muted); }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 15px; background: var(--panel); }
 .data-table th { position: sticky; top: 0; background: #102131; z-index: 2; }
 .data-table tbody tr:hover { background: rgba(77,163,255,.06); }
+.sort-button { padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--muted); font: inherit; text-transform: inherit; letter-spacing: inherit; }
+.sort-button:hover, .sort-button[aria-sort="ascending"], .sort-button[aria-sort="descending"] { color: var(--accent); }
+.sort-button span { color: var(--accent-2); }
+.spreadsheet-wrap { max-height: 72vh; }
+.spreadsheet-table { min-width: 1320px; font-size: .88rem; }
+.spreadsheet-table th, .spreadsheet-table td { white-space: nowrap; padding: .55rem .65rem; }
+.spreadsheet-table th:first-child, .spreadsheet-table td:first-child { position: sticky; left: 0; z-index: 3; background: #102131; }
+.spreadsheet-table td:first-child { background: var(--panel); }
+.sheet-note { color: var(--muted); font-size: .85rem; margin: .8rem 0; }
 .data-table a { color: var(--accent); font-weight: 700; }
 .badge, .risk { display: inline-flex; min-width: 56px; justify-content: center; padding: .22rem .5rem; border-radius: 999px; background: #20364a; font-weight: 750; }
 .risk-low { background: rgba(43,214,123,.18); color: var(--green); }

@@ -42,6 +42,16 @@ router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 
+def _optional_number(value: str | None, parser):
+    """Accept blank form values without turning them into a 422 response."""
+    if value is None or not value.strip():
+        return None
+    try:
+        return parser(value.strip().replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+
+
 @router.get("/health")
 def health(db: Session = Depends(get_db)):
     db.execute(text("SELECT 1"))
@@ -114,32 +124,41 @@ def dashboard(
 def players(
     request: Request,
     position: str | None = None,
-    max_price: float | None = None,
-    max_rotation: float | None = None,
-    min_minutes: int | None = None,
-    min_starts: int | None = None,
-    min_start_rate: float | None = None,
-    min_reliable_value: float | None = None,
-    min_forward_value: float | None = None,
-    max_ownership: float | None = None,
+    max_price: str | None = None,
+    max_rotation: str | None = None,
+    min_minutes: str | None = None,
+    min_starts: str | None = None,
+    min_start_rate: str | None = None,
+    min_reliable_value: str | None = None,
+    min_forward_value: str | None = None,
+    max_ownership: str | None = None,
     status: str | None = None,
-    team_id: int | None = None,
+    team_id: str | None = None,
     sort: str = "reliable_value",
     db: Session = Depends(get_db),
 ):
+    max_price_value = _optional_number(max_price, float)
+    max_rotation_value = _optional_number(max_rotation, float)
+    min_minutes_value = _optional_number(min_minutes, int)
+    min_starts_value = _optional_number(min_starts, int)
+    min_start_rate_value = _optional_number(min_start_rate, float)
+    min_reliable_value_value = _optional_number(min_reliable_value, float)
+    min_forward_value_value = _optional_number(min_forward_value, float)
+    max_ownership_value = _optional_number(max_ownership, float)
+    team_id_value = _optional_number(team_id, int)
     rows = filtered_players(
         db,
         position=position or None,
-        max_price=max_price,
-        max_rotation=max_rotation,
-        min_minutes=min_minutes,
-        min_starts=min_starts,
-        min_start_rate=min_start_rate,
-        min_reliable_value=min_reliable_value,
-        min_forward_value=min_forward_value,
-        max_ownership=max_ownership,
+        max_price=max_price_value,
+        max_rotation=max_rotation_value,
+        min_minutes=min_minutes_value,
+        min_starts=min_starts_value,
+        min_start_rate=min_start_rate_value,
+        min_reliable_value=min_reliable_value_value,
+        min_forward_value=min_forward_value_value,
+        max_ownership=max_ownership_value,
         status=status,
-        team_id=team_id,
+        team_id=team_id_value,
         sort=sort,
     )
     return templates.TemplateResponse(
@@ -148,19 +167,43 @@ def players(
         context={
             "rows": rows,
             "position": position or "",
-            "max_price": max_price,
-            "max_rotation": max_rotation,
-            "min_minutes": min_minutes,
-            "min_starts": min_starts,
-            "min_start_rate": min_start_rate,
-            "min_reliable_value": min_reliable_value,
-            "min_forward_value": min_forward_value,
-            "max_ownership": max_ownership,
+            "max_price": max_price_value,
+            "max_rotation": max_rotation_value,
+            "min_minutes": min_minutes_value,
+            "min_starts": min_starts_value,
+            "min_start_rate": min_start_rate_value,
+            "min_reliable_value": min_reliable_value_value,
+            "min_forward_value": min_forward_value_value,
+            "max_ownership": max_ownership_value,
             "status": status or "",
-            "team_id": team_id,
+            "team_id": team_id_value,
             "sort": sort,
         },
     )
+
+
+@router.get("/spreadsheet", response_class=HTMLResponse)
+def spreadsheet(
+    request: Request,
+    position: str | None = None,
+    max_price: str | None = None,
+    max_rotation: str | None = None,
+    min_minutes: str | None = None,
+    min_starts: str | None = None,
+    min_start_rate: str | None = None,
+    min_reliable_value: str | None = None,
+    min_forward_value: str | None = None,
+    max_ownership: str | None = None,
+    status: str | None = None,
+    sort: str = "reliable_value",
+    db: Session = Depends(get_db),
+):
+    values = {"max_price": _optional_number(max_price, float), "max_rotation": _optional_number(max_rotation, float),
+              "min_minutes": _optional_number(min_minutes, int), "min_starts": _optional_number(min_starts, int),
+              "min_start_rate": _optional_number(min_start_rate, float), "min_reliable_value": _optional_number(min_reliable_value, float),
+              "min_forward_value": _optional_number(min_forward_value, float), "max_ownership": _optional_number(max_ownership, float)}
+    rows = filtered_players(db, position=position or None, status=status, sort=sort, **values)
+    return templates.TemplateResponse(request=request, name="spreadsheet.html", context={"rows": rows, "position": position or "", "status": status or "", "sort": sort, **values})
 
 
 @router.get("/players/{player_id}", response_class=HTMLResponse)
