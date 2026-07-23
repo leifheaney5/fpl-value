@@ -123,63 +123,11 @@ def dashboard(
 @router.get("/players", response_class=HTMLResponse)
 def players(
     request: Request,
-    position: str | None = None,
-    max_price: str | None = None,
-    max_rotation: str | None = None,
-    min_minutes: str | None = None,
-    min_starts: str | None = None,
-    min_start_rate: str | None = None,
-    min_reliable_value: str | None = None,
-    min_forward_value: str | None = None,
-    max_ownership: str | None = None,
-    status: str | None = None,
-    team_id: str | None = None,
-    sort: str = "reliable_value",
-    db: Session = Depends(get_db),
 ):
-    max_price_value = _optional_number(max_price, float)
-    max_rotation_value = _optional_number(max_rotation, float)
-    min_minutes_value = _optional_number(min_minutes, int)
-    min_starts_value = _optional_number(min_starts, int)
-    min_start_rate_value = _optional_number(min_start_rate, float)
-    min_reliable_value_value = _optional_number(min_reliable_value, float)
-    min_forward_value_value = _optional_number(min_forward_value, float)
-    max_ownership_value = _optional_number(max_ownership, float)
-    team_id_value = _optional_number(team_id, int)
-    rows = filtered_players(
-        db,
-        position=position or None,
-        max_price=max_price_value,
-        max_rotation=max_rotation_value,
-        min_minutes=min_minutes_value,
-        min_starts=min_starts_value,
-        min_start_rate=min_start_rate_value,
-        min_reliable_value=min_reliable_value_value,
-        min_forward_value=min_forward_value_value,
-        max_ownership=max_ownership_value,
-        status=status,
-        team_id=team_id_value,
-        sort=sort,
-    )
-    return templates.TemplateResponse(
-        request=request,
-        name="players.html",
-        context={
-            "rows": rows,
-            "position": position or "",
-            "max_price": max_price_value,
-            "max_rotation": max_rotation_value,
-            "min_minutes": min_minutes_value,
-            "min_starts": min_starts_value,
-            "min_start_rate": min_start_rate_value,
-            "min_reliable_value": min_reliable_value_value,
-            "min_forward_value": min_forward_value_value,
-            "max_ownership": max_ownership_value,
-            "status": status or "",
-            "team_id": team_id_value,
-            "sort": sort,
-        },
-    )
+    target = "/spreadsheet"
+    if request.url.query:
+        target += "?" + request.url.query
+    return RedirectResponse(target, status_code=307)
 
 
 @router.get("/spreadsheet", response_class=HTMLResponse)
@@ -253,6 +201,10 @@ def player_detail(
             "player": player,
             "current": history[-1],
             "history": history,
+            "comparison_options": [
+                row for row in filtered_players(db, sort="reliable_value")
+                if row["player"].id != player_id
+            ],
         },
     )
 

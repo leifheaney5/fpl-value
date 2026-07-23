@@ -103,6 +103,10 @@ td small { display: block; color: var(--muted); }
 .settings-card p { color: var(--muted); }
 .settings-card-icon { color: var(--accent); font-size: 1.6rem; }
 .settings-card-link { display: inline-block; margin-top: .7rem; color: var(--accent); font-weight: 800; }
+.compare-launcher { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin: 1rem 0; }
+.compare-launcher h2 { margin: .25rem 0; }
+.compare-inline-form { display: flex; align-items: end; gap: .6rem; min-width: min(520px, 100%); }
+.compare-inline-form select { min-width: 260px; }
 .spreadsheet-tabs { display: flex; flex-wrap: wrap; gap: .45rem; margin: 1rem 0 .75rem; }
 .spreadsheet-tab { padding: .55rem .8rem; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: var(--panel); font-weight: 750; }
 .spreadsheet-tab:hover, .spreadsheet-tab.active { color: #071019; background: var(--accent); border-color: var(--accent); }
@@ -155,6 +159,9 @@ footer { border-top: 1px solid var(--line); color: var(--muted); text-align: cen
   .hero, .player-hero { align-items: flex-start; flex-direction: column; }
   .cards, .cards.six, .filters, .compare-form { grid-template-columns: 1fr; }
   .settings-grid { grid-template-columns: 1fr; }
+  .compare-launcher { align-items: stretch; flex-direction: column; }
+  .compare-inline-form { flex-direction: column; align-items: stretch; min-width: 0; }
+  .compare-inline-form select { min-width: 0; }
 }
 
 .movement {
