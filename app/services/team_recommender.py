@@ -88,8 +88,8 @@ def _candidates(rows: list[dict[str, Any]], position: str, strategy: str) -> lis
     position_rows = [row for row in rows if row["player"].position_short == position and row["snapshot"].price > 0]
     ranked = sorted(position_rows, key=lambda row: _score(row, strategy), reverse=True)
     cheapest = sorted(position_rows, key=lambda row: row["snapshot"].price)
-    unique = {row["player"].id: row for row in ranked[:20]}
-    unique.update({row["player"].id: row for row in cheapest[:5]})
+    unique = {row["player"].id: row for row in ranked[:30]}
+    unique.update({row["player"].id: row for row in cheapest[:10]})
     return list(unique.values())
 
 
