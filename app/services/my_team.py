@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -9,30 +10,43 @@ from app.config import Settings
 from app.services.queries import latest_rows
 
 
+_REMOTE_CACHE: dict[int, tuple[float, dict[str, Any]]] = {}
+
+
+def _remote_team_data(client: FPLClient, entry_id: int) -> dict[str, Any]:
+    now = time.monotonic()
+    cached = _REMOTE_CACHE.get(entry_id)
+    if cached and now - cached[0] < 300:
+        return cached[1]
+    try:
+        entry = client.entry(entry_id)
+        current_event = entry.get("current_event")
+        history: dict[str, Any] = {"current": []}
+        benchmark_events: list[dict[str, Any]] = []
+        picks: list[dict[str, Any]] = []
+        if current_event:
+            history = client.entry_history(entry_id)
+            benchmark_events = client.bootstrap().get("events", [])
+            picks = client.entry_picks(entry_id, int(current_event)).get("picks", [])
+        data = {"entry": entry, "history": history, "benchmark_events": benchmark_events, "picks": picks}
+    except (RuntimeError, ValueError):
+        data = {"error": "Team data is temporarily unavailable."}
+    _REMOTE_CACHE[entry_id] = (now, data)
+    return data
+
+
 def linked_team_data(db: Session, client: FPLClient, settings: Settings) -> dict[str, Any] | None:
     """Return public team information and current picks when an entry is configured."""
     if not settings.fpl_entry_id:
         return None
-    try:
-        entry = client.entry(settings.fpl_entry_id)
-    except (RuntimeError, ValueError):
-        return {"entry_id": settings.fpl_entry_id, "error": "Team data is temporarily unavailable."}
-
+    remote = _remote_team_data(client, settings.fpl_entry_id)
+    if "error" in remote:
+        return {"entry_id": settings.fpl_entry_id, "error": remote["error"]}
+    entry = remote["entry"]
     current_event = entry.get("current_event")
-    history: dict[str, Any] = {"current": []}
-    benchmark_events: list[dict[str, Any]] = []
-    if current_event:
-        try:
-            history = client.entry_history(settings.fpl_entry_id)
-            benchmark_events = client.bootstrap().get("events", [])
-        except (RuntimeError, ValueError):
-            pass
-    picks: list[dict[str, Any]] = []
-    if current_event:
-        try:
-            picks = client.entry_picks(settings.fpl_entry_id, int(current_event)).get("picks", [])
-        except (RuntimeError, ValueError):
-            picks = []
+    history = remote["history"]
+    benchmark_events = remote["benchmark_events"]
+    picks = remote["picks"]
 
     rows_by_id = {row["player"].id: row for row in latest_rows(db)}
     squad = []
