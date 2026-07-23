@@ -21,11 +21,12 @@ def linked_team_data(db: Session, client: FPLClient, settings: Settings) -> dict
     current_event = entry.get("current_event")
     history: dict[str, Any] = {"current": []}
     benchmark_events: list[dict[str, Any]] = []
-    try:
-        history = client.entry_history(settings.fpl_entry_id)
-        benchmark_events = client.bootstrap().get("events", [])
-    except (RuntimeError, ValueError):
-        pass
+    if current_event:
+        try:
+            history = client.entry_history(settings.fpl_entry_id)
+            benchmark_events = client.bootstrap().get("events", [])
+        except (RuntimeError, ValueError):
+            pass
     picks: list[dict[str, Any]] = []
     if current_event:
         try:
