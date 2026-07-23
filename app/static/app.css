@@ -41,6 +41,9 @@ button.ghost, .button.ghost { background: transparent; color: var(--text); borde
 .site-header nav { display: flex; gap: 1.2rem; flex: 1; }
 .site-header nav a { color: var(--muted); }
 .site-header nav a:hover { color: var(--text); }
+.settings-link { width: 30px; height: 30px; display: grid; place-items: center; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; flex: 0 0 auto; }
+.settings-link:hover, .settings-link:focus-visible { color: var(--accent); border-color: var(--accent); }
+.settings-link svg { width: 16px; height: 16px; fill: currentColor; }
 .brand { font-size: 1.05rem; font-weight: 900; letter-spacing: -.03em; }
 .brand span { color: var(--accent); }
 .brand.large { font-size: 1.6rem; }
@@ -93,6 +96,13 @@ td small { display: block; color: var(--muted); }
 .spreadsheet-table th:first-child, .spreadsheet-table td:first-child { position: sticky; left: 0; z-index: 3; background: #102131; }
 .spreadsheet-table td:first-child { background: var(--panel); }
 .sheet-note { color: var(--muted); font-size: .85rem; margin: .8rem 0; }
+.settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; max-width: 900px; }
+.settings-card { display: block; color: var(--text); transition: border-color .15s ease, transform .15s ease; }
+.settings-card:hover { border-color: var(--accent-2); transform: translateY(-2px); }
+.settings-card h2 { margin: .5rem 0 .35rem; }
+.settings-card p { color: var(--muted); }
+.settings-card-icon { color: var(--accent); font-size: 1.6rem; }
+.settings-card-link { display: inline-block; margin-top: .7rem; color: var(--accent); font-weight: 800; }
 .spreadsheet-tabs { display: flex; flex-wrap: wrap; gap: .45rem; margin: 1rem 0 .75rem; }
 .spreadsheet-tab { padding: .55rem .8rem; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: var(--panel); font-weight: 750; }
 .spreadsheet-tab:hover, .spreadsheet-tab.active { color: #071019; background: var(--accent); border-color: var(--accent); }
@@ -144,6 +154,7 @@ footer { border-top: 1px solid var(--line); color: var(--muted); text-align: cen
 @media (max-width: 600px) {
   .hero, .player-hero { align-items: flex-start; flex-direction: column; }
   .cards, .cards.six, .filters, .compare-form { grid-template-columns: 1fr; }
+  .settings-grid { grid-template-columns: 1fr; }
 }
 
 .movement {

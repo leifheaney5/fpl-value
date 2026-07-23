@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Settings · FPL Value Studio{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">SETTINGS</p><h1>Keep the workspace healthy.</h1><p>Operational tools live here so the player analysis stays focused and easy to reference.</p></div></div>
+<section class="settings-grid">
+  <a class="panel settings-card" href="/diagnostics"><span class="settings-card-icon">⌁</span><h2>Diagnostics</h2><p>Review data sufficiency, historical coverage, and model readiness.</p><span class="settings-card-link">Open diagnostics →</span></a>
+  <a class="panel settings-card" href="/schema"><span class="settings-card-icon">◇</span><h2>Schema history</h2><p>See added and removed fields detected in the public FPL API.</p><span class="settings-card-link">Open schema history →</span></a>
+</section>
+{% endblock %}

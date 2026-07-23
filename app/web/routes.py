@@ -338,6 +338,15 @@ def diagnostics(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(request=request, name="diagnostics.html", context=data)
 
 
+@router.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="settings.html",
+        context={},
+    )
+
+
 @router.get("/movers", response_class=HTMLResponse)
 def movers_page(
     request: Request,
