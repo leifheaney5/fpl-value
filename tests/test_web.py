@@ -24,7 +24,7 @@ def test_web_routes_health_exports_and_new_pages(tmp_path):
     try:
         client = TestClient(app)
         assert client.get("/health").status_code == 200
-        for path in ["/", "/players", "/spreadsheet", "/transfers", "/movers", "/compare", "/diagnostics", "/schema", "/settings"]:
+        for path in ["/", "/players", "/spreadsheet", "/my-team", "/transfers", "/movers", "/compare", "/diagnostics", "/schema", "/settings"]:
             assert client.get(path).status_code == 200
         assert client.get("/players?position=MID").url.path == "/spreadsheet"
         assert client.get("/players?max_price=&min_minutes=&max_ownership=not-a-number").status_code == 200

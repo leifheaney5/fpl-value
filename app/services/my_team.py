@@ -19,6 +19,13 @@ def linked_team_data(db: Session, client: FPLClient, settings: Settings) -> dict
         return {"entry_id": settings.fpl_entry_id, "error": "Team data is temporarily unavailable."}
 
     current_event = entry.get("current_event")
+    history: dict[str, Any] = {"current": []}
+    benchmark_events: list[dict[str, Any]] = []
+    try:
+        history = client.entry_history(settings.fpl_entry_id)
+        benchmark_events = client.bootstrap().get("events", [])
+    except (RuntimeError, ValueError):
+        pass
     picks: list[dict[str, Any]] = []
     if current_event:
         try:
@@ -32,6 +39,21 @@ def linked_team_data(db: Session, client: FPLClient, settings: Settings) -> dict
         row = rows_by_id.get(pick.get("element"))
         if row:
             squad.append({"row": row, "pick": pick})
+    benchmark_by_event = {event.get("id"): event for event in benchmark_events}
+    average_total = 0
+    performance = []
+    for item in history.get("current", []):
+        event_id = item.get("event")
+        event = benchmark_by_event.get(event_id, {})
+        average_total += event.get("average_entry_score") or 0
+        performance.append({
+            "event": event_id,
+            "points": item.get("points"),
+            "total_points": item.get("total_points"),
+            "average_total": average_total,
+            "top_10k_total": None,
+            "top_10_percent_total": None,
+        })
     return {
         "entry_id": settings.fpl_entry_id,
         "name": entry.get("name") or "Linked FPL team",
@@ -41,4 +63,6 @@ def linked_team_data(db: Session, client: FPLClient, settings: Settings) -> dict
         "event": current_event,
         "squad": squad,
         "picks_available": bool(picks),
+        "performance": performance,
+        "benchmark_status": "The public FPL payload does not currently provide top-10k or top-10% performance series.",
     }

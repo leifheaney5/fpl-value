@@ -302,6 +302,19 @@ def settings_page(request: Request):
     )
 
 
+@router.get("/my-team", response_class=HTMLResponse)
+def my_team_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    return templates.TemplateResponse(
+        request=request,
+        name="my_team.html",
+        context={"my_team": linked_team_data(db, FPLClient(settings), settings)},
+    )
+
+
 @router.get("/movers", response_class=HTMLResponse)
 def movers_page(
     request: Request,
