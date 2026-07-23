@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}FPL Value Studio{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/">FPL <span>Value Studio</span></a>
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/players">Players</a>
+      <a href="/forward">Forward Value</a>
+      <a href="/rotation">Rotation Risk</a>
+      <a href="/transfers">Transfer Finder</a>
+      <a href="/movers">Movers</a>
+      <a href="/compare">Compare</a>
+      <a href="/diagnostics">Diagnostics</a>
+      <a href="/schema">Schema</a>
+    </nav>
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+      <button class="ghost small" type="submit">Log out</button>
+    </form>
+  </header>
+  <main class="page">
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    FPL Value Studio · Independent analytics using public FPL data
+  </footer>
+</body>
+</html>

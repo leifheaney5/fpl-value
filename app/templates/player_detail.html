@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}{{ player.full_name }} · FPL Value Studio{% endblock %}
+{% block content %}
+<section class="player-hero">
+  <div>
+    <p class="eyebrow">{{ player.position_short }} · {{ player.team.name }}</p>
+    <h1>{{ player.full_name }}</h1>
+    <p>{{ player.news or "No current availability note." }}</p>
+  </div>
+  <div class="player-price">£{{ "%.1f"|format(current.price) }}</div>
+</section>
+
+<section class="cards six">
+  <article class="stat"><span>Raw value</span><strong>{{ "%.2f"|format(current.value) }}</strong></article>
+  <article class="stat"><span>Reliable value</span><strong>{{ "%.2f"|format(current.reliable_value) }}</strong></article>
+  <article class="stat"><span>Forward value</span><strong>{{ "%.2f"|format(current.forward_value) }}</strong></article>
+  <article class="stat"><span>Rotation risk</span><strong>{{ current.rotation_risk or "—" }}</strong></article>
+  <article class="stat"><span>Points / 90</span><strong>{{ "%.2f"|format(current.points_per_90) }}</strong></article>
+  <article class="stat"><span>Start rate</span><strong>{{ "%.0f"|format(current.start_rate) }}%</strong></article>
+</section>
+
+<section class="panel chart-panel large-chart">
+  <h2>Player history</h2>
+  <canvas id="historyChart"></canvas>
+</section>
+
+<section class="dashboard-grid">
+  <article class="panel">
+    <h2>Playing time</h2>
+    <dl class="metrics">
+      <div><dt>Minutes</dt><dd>{{ current.minutes }}</dd></div>
+      <div><dt>Starts</dt><dd>{{ current.starts }}</dd></div>
+      <div><dt>Team matches</dt><dd>{{ current.team_matches }}</dd></div>
+      <div><dt>Expected minutes</dt><dd>{{ current.expected_minutes }}</dd></div>
+      <div><dt>Reliability</dt><dd>{{ "%.2f"|format(current.reliability_factor) }}</dd></div>
+      <div><dt>Risk confidence</dt><dd>{{ current.rotation_confidence }}</dd></div>
+    </dl>
+  </article>
+  <article class="panel">
+    <h2>Upcoming fixtures</h2>
+    <dl class="metrics"><div><dt>Availability</dt><dd>{{ current.availability_status }} · {{ "%.0f"|format(current.availability_factor * 100) }}%</dd></div><div><dt>Chance next round</dt><dd>{{ "%.0f"|format(current.chance_of_playing) if current.chance_of_playing is not none else "Not supplied" }}</dd></div><div><dt>Fixture difficulty</dt><dd>{{ "%.1f"|format(current.average_fixture_difficulty) if current.average_fixture_difficulty else "—" }}</dd></div><div><dt>Projection inputs</dt><dd>Form {{ current.form }} · PPG {{ current.points_per_game }} · P/90 {{ "%.2f"|format(current.points_per_90) }}</dd></div></dl>
+    <div class="fixtures">
+    {% for fixture in current.upcoming_fixtures %}
+      <span>GW{{ fixture.event }} · {{ fixture.opponent }} {{ "(H)" if fixture.is_home else "(A)" }} · FDR {{ fixture.difficulty }}</span>
+    {% else %}
+      <p class="muted">No future fixtures available.</p>
+    {% endfor %}
+    </div>
+  </article>
+</section>
+
+<article class="panel"><h2>Historical movement</h2><div class="metrics"><div><dt>1D value</dt><dd>{{ history[-1].value }}</dd></div><div><dt>Current rank</dt><dd>{{ current.value_rank or "Not ranked" }}</dd></div><div><dt>Forward percentile</dt><dd>{{ current.forward_percentile or "Not ranked" }}</dd></div><div><dt>Reference</dt><dd>{{ current.historical_reference_at or "No comparison snapshot" }}</dd></div></div></article>
+
+<script>
+new Chart(document.getElementById("historyChart"), {
+  type: "line",
+  data: {
+    labels: {{ history|map(attribute="captured_at")|map("string")|list|tojson }},
+    datasets: [
+      { label: "Value", data: {{ history|map(attribute="value")|list|tojson }}, yAxisID: "y" },
+      { label: "Reliable value", data: {{ history|map(attribute="reliable_value")|list|tojson }}, yAxisID: "y" },
+      { label: "Price", data: {{ history|map(attribute="price")|list|tojson }}, yAxisID: "price" },
+      { label: "Rotation risk", data: {{ history|map(attribute="rotation_risk")|list|tojson }}, yAxisID: "risk" }
+    ]
+  },
+  options: {
+    responsive: true,
+    interaction: { mode: "index", intersect: false },
+    scales: {
+      y: { type: "linear", position: "left" },
+      price: { type: "linear", position: "right", grid: { drawOnChartArea: false } },
+      risk: { type: "linear", display: false, min: 0, max: 100 }
+    }
+  }
+});
+</script>
+{% endblock %}

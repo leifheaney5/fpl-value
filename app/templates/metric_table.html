@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · FPL Value Studio{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><p class="eyebrow">RANKED ANALYSIS</p><h1>{{ title }}</h1><p>{{ description }}</p></div>
+</div>
+<div class="table-wrap">
+<table class="data-table">
+  <thead>
+    <tr><th>Player</th><th>Team</th><th>Pos</th><th>Price</th><th>Reliable</th><th>Forward</th><th>Projected</th><th>Rotation</th><th>Expected min</th><th>Fixtures</th></tr>
+  </thead>
+  <tbody>
+  {% for row in rows %}
+    <tr>
+      <td><a href="/players/{{ row.player.id }}">{{ row.player.full_name }}</a></td>
+      <td>{{ row.team.short_name }}</td>
+      <td>{{ row.player.position_short }}</td>
+      <td>£{{ "%.1f"|format(row.snapshot.price) }}</td>
+      <td>{{ "%.2f"|format(row.snapshot.reliable_value) }}</td>
+      <td><strong>{{ "%.2f"|format(row.snapshot.forward_value) }}</strong></td>
+      <td>{{ "%.1f"|format(row.snapshot.projected_points_5) }}</td>
+      <td><span class="risk risk-{{ row.snapshot.rotation_tier|lower|replace(' ', '-') }}">{{ row.snapshot.rotation_risk if row.snapshot.rotation_risk is not none else "—" }}</span></td>
+      <td>{{ "%.0f"|format(row.snapshot.expected_minutes) }}</td>
+      <td>{{ row.snapshot.upcoming_fixtures|length }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

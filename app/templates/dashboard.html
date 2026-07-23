@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · FPL Value Studio{% endblock %}
+{% block content %}
+<section class="hero">
+  <div>
+    <p class="eyebrow">LIVE PLAYER INTELLIGENCE</p>
+    <h1>Find value without ignoring minutes, fixtures, or rotation.</h1>
+    <p class="lede">Raw value, reliability-adjusted value, forward projections, and playing-time risk in one persistent analytics workspace.</p>
+  </div>
+  <div class="actions">
+    <form method="post" action="/admin/refresh">
+      <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+      <button type="submit">Refresh FPL data</button>
+    </form>
+    <a class="button secondary" href="/exports/current.xlsx">Export Excel</a>
+    <a class="button ghost" href="/exports/current.csv">Export CSV</a>
+  </div>
+</section>
+
+<section class="cards">
+  <article class="stat"><span>Players</span><strong>{{ player_count }}</strong></article>
+  <article class="stat"><span>Ranked</span><strong>{{ ranked_count }}</strong></article>
+  <article class="stat"><span>Last refresh</span><strong class="small-value">{{ latest_time or "Never" }}</strong></article>
+  <article class="stat"><span>Refresh status</span><strong class="small-value">{{ latest_run.status if latest_run else "No runs" }}</strong></article>
+</section>
+
+<section class="dashboard-grid">
+  <article class="panel">
+    <div class="panel-title"><h2>Top reliable value</h2><a href="/players?sort=reliable_value">View all</a></div>
+    <table>
+      <thead><tr><th>Player</th><th>Pos</th><th>Price</th><th>Reliable</th></tr></thead>
+      <tbody>
+      {% for row in best_reliable %}
+        <tr>
+          <td><a href="/players/{{ row.player.id }}">{{ row.player.full_name }}</a><small>{{ row.team.short_name }}</small></td>
+          <td>{{ row.player.position_short }}</td>
+          <td>£{{ "%.1f"|format(row.snapshot.price) }}</td>
+          <td><span class="badge tier-{{ row.snapshot.reliable_tier|lower|replace(' ', '-')|replace('%','') }}">{{ "%.2f"|format(row.snapshot.reliable_value) }}</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </article>
+
+  <article class="panel">
+    <div class="panel-title"><h2>Top forward value</h2><a href="/forward">View all</a></div>
+    <table>
+      <thead><tr><th>Player</th><th>Fixtures</th><th>Projected</th><th>Forward</th></tr></thead>
+      <tbody>
+      {% for row in best_forward %}
+        <tr>
+          <td><a href="/players/{{ row.player.id }}">{{ row.player.full_name }}</a><small>{{ row.team.short_name }}</small></td>
+          <td>{{ row.snapshot.upcoming_fixtures|length }}</td>
+          <td>{{ "%.1f"|format(row.snapshot.projected_points_5) }}</td>
+          <td><span class="badge">{{ "%.2f"|format(row.snapshot.forward_value) }}</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </article>
+
+  <article class="panel">
+    <div class="panel-title"><h2>Lowest rotation risk</h2><a href="/rotation">View all</a></div>
+    <table>
+      <thead><tr><th>Player</th><th>Starts</th><th>Minutes</th><th>Risk</th></tr></thead>
+      <tbody>
+      {% for row in low_rotation %}
+        <tr>
+          <td><a href="/players/{{ row.player.id }}">{{ row.player.full_name }}</a><small>{{ row.team.short_name }}</small></td>
+          <td>{{ row.snapshot.starts }}/{{ row.snapshot.team_matches }}</td>
+          <td>{{ row.snapshot.minutes }}</td>
+          <td><span class="risk risk-{{ row.snapshot.rotation_tier|lower|replace(' ', '-') }}">{{ row.snapshot.rotation_risk }}</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </article>
+
+  <article class="panel chart-panel">
+    <h2>Average reliable value by position</h2>
+    <canvas id="positionChart"></canvas>
+  </article>
+</section>
+
+
+<section class="dashboard-grid">
+  <article class="panel">
+    <div class="panel-title"><h2>{{ comparison_label }} value risers</h2><a href="/movers?period={{ comparison_label }}">View movers</a></div>
+    <table>
+      <thead><tr><th>Player</th><th>Current</th><th>Change</th><th>Rank Δ</th></tr></thead>
+      <tbody>
+      {% for row in top_risers %}
+        <tr>
+          <td><a href="/players/{{ row.player.id }}">{{ row.player.full_name }}</a><small>{{ row.team.short_name }}</small></td>
+          <td>{{ "%.2f"|format(row.snapshot.value) }}</td>
+          <td><span class="movement increase">+{{ "%.2f"|format(row.history[comparison_label].delta_value) }}</span></td>
+          <td>{{ row.history[comparison_label].delta_rank if row.history[comparison_label].delta_rank is not none else "—" }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="empty">Not enough history yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </article>
+
+  <article class="panel">
+    <div class="panel-title"><h2>{{ comparison_label }} value fallers</h2><a href="/movers?period={{ comparison_label }}">View movers</a></div>
+    <table>
+      <thead><tr><th>Player</th><th>Current</th><th>Change</th><th>Rank Δ</th></tr></thead>
+      <tbody>
+      {% for row in top_fallers %}
+        <tr>
+          <td><a href="/players/{{ row.player.id }}">{{ row.player.full_name }}</a><small>{{ row.team.short_name }}</small></td>
+          <td>{{ "%.2f"|format(row.snapshot.value) }}</td>
+          <td><span class="movement decrease">{{ "%.2f"|format(row.history[comparison_label].delta_value) }}</span></td>
+          <td>{{ row.history[comparison_label].delta_rank if row.history[comparison_label].delta_rank is not none else "—" }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="empty">Not enough history yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </article>
+</section>
+
+{% if schema_changes %}
+<section class="panel">
+  <div class="panel-title"><h2>Recent API schema changes</h2><a href="/schema">View history</a></div>
+  <div class="schema-list">
+    {% for change in schema_changes %}
+      <span class="schema-change">{{ change.category }} · {{ change.change_type }} · {{ change.field_name }}</span>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<script>
+new Chart(document.getElementById("positionChart"), {
+  type: "bar",
+  data: {
+    labels: {{ position_averages.keys()|list|tojson }},
+    datasets: [{
+      label: "Reliable value",
+      data: {{ position_averages.values()|list|tojson }},
+      borderWidth: 0,
+      borderRadius: 8
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: { y: { beginAtZero: true } }
+  }
+});
+</script>
+{% endblock %}

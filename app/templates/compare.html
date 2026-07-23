@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Compare · FPL Value Studio{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><p class="eyebrow">HEAD-TO-HEAD</p><h1>Compare up to five players.</h1></div>
+</div>
+
+<form method="get" class="compare-form">
+  {% for index in range(5) %}
+  <select name="ids">
+    <option value="">Choose player</option>
+    {% for row in all_rows %}
+      <option value="{{ row.player.id }}" {% if selected_ids|length > index and selected_ids[index] == row.player.id %}selected{% endif %}>
+        {{ row.player.full_name }} · {{ row.team.short_name }} · £{{ "%.1f"|format(row.snapshot.price) }}
+      </option>
+    {% endfor %}
+  </select>
+  {% endfor %}
+  <button type="submit">Compare</button>
+</form>
+
+{% if selected %}
+<div class="table-wrap">
+<table class="data-table comparison">
+  <thead>
+    <tr><th>Metric</th>{% for row in selected %}<th>{{ row.player.full_name }}</th>{% endfor %}</tr>
+  </thead>
+  <tbody>
+    <tr><td>Price</td>{% for row in selected %}<td>£{{ "%.1f"|format(row.snapshot.price) }}</td>{% endfor %}</tr>
+    <tr><td>Total points</td>{% for row in selected %}<td>{{ row.snapshot.total_points }}</td>{% endfor %}</tr>
+    <tr><td>Raw value</td>{% for row in selected %}<td>{{ "%.2f"|format(row.snapshot.value) }}</td>{% endfor %}</tr>
+    <tr><td>Reliable value</td>{% for row in selected %}<td>{{ "%.2f"|format(row.snapshot.reliable_value) }}</td>{% endfor %}</tr>
+    <tr><td>Forward value</td>{% for row in selected %}<td>{{ "%.2f"|format(row.snapshot.forward_value) }}</td>{% endfor %}</tr>
+    <tr><td>Projected next fixtures</td>{% for row in selected %}<td>{{ "%.1f"|format(row.snapshot.projected_points_5) }}</td>{% endfor %}</tr>
+    <tr><td>Rotation risk</td>{% for row in selected %}<td>{{ row.snapshot.rotation_risk or "—" }}</td>{% endfor %}</tr>
+    <tr><td>PPG</td>{% for row in selected %}<td>{{ "%.2f"|format(row.snapshot.points_per_game) }}</td>{% endfor %}</tr>
+    <tr><td>Points / 90</td>{% for row in selected %}<td>{{ "%.2f"|format(row.snapshot.points_per_90) }}</td>{% endfor %}</tr>
+    <tr><td>Start rate</td>{% for row in selected %}<td>{{ "%.0f"|format(row.snapshot.start_rate) }}%</td>{% endfor %}</tr>
+    <tr><td>Ownership</td>{% for row in selected %}<td>{{ "%.1f"|format(row.snapshot.ownership) }}%</td>{% endfor %}</tr>
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

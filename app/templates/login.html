@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · FPL Value Studio</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="login-body">
+  <form method="post" action="/login" class="login-card">
+    <div class="brand large">FPL <span>Value Studio</span></div>
+    <p>Sign in to your private analytics workspace.</p>
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <input type="hidden" name="next" value="{{ next }}">
+    <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+    <label>Username<input name="username" autocomplete="username" required></label>
+    <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+    <button type="submit">Sign in</button>
+    {% if not auth_enabled %}
+      <p class="muted">Authentication is disabled until APP_USERNAME and APP_PASSWORD are set.</p>
+    {% endif %}
+  </form>
+</body>
+</html>

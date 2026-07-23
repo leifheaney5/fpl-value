@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Schema changes · FPL Value Studio{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><p class="eyebrow">DATA CONTRACT</p><h1>FPL API schema history.</h1><p>Added and removed fields are recorded so upstream changes are visible.</p></div>
+</div>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Detected</th><th>Category</th><th>Change</th><th>Field</th></tr></thead>
+  <tbody>
+  {% for change in changes %}
+    <tr><td>{{ change.detected_at }}</td><td>{{ change.category }}</td><td>{{ change.change_type }}</td><td><code>{{ change.field_name }}</code></td></tr>
+  {% else %}
+    <tr><td colspan="4" class="empty">No schema changes recorded.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

@@ -1,0 +1,375 @@
+from __future__ import annotations
+
+import io
+from typing import Annotated
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+)
+from fastapi.responses import (
+    HTMLResponse,
+    RedirectResponse,
+    Response,
+)
+from fastapi.templating import Jinja2Templates
+from sqlalchemy import select, text
+from sqlalchemy.orm import Session
+
+from app.api.fpl_client import FPLClient
+from app.config import Settings, get_settings
+from app.db.models import Player
+from app.db.session import get_db
+from app.services.exports import csv_bytes, xlsx_bytes
+from app.services.queries import (
+    dashboard_data,
+    filtered_players,
+    latest_rows,
+    movers_data,
+    diagnostics_data,
+    player_history,
+    recent_schema_changes,
+)
+from app.services.refresh import refresh_data
+from app.web.auth import safe_next_path, valid_credentials, valid_csrf
+
+
+router = APIRouter()
+templates = Jinja2Templates(directory="app/templates")
+
+
+@router.get("/health")
+def health(db: Session = Depends(get_db)):
+    db.execute(text("SELECT 1"))
+    return {"status": "ok"}
+
+
+@router.get("/login", response_class=HTMLResponse)
+def login_page(
+    request: Request,
+    next: str = "/",
+    settings: Settings = Depends(get_settings),
+):
+    return templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={
+            "next": safe_next_path(next),
+            "auth_enabled": settings.auth_enabled,
+        },
+    )
+
+
+@router.post("/login")
+def login(
+    request: Request,
+    username: Annotated[str, Form()],
+    password: Annotated[str, Form()],
+    next: Annotated[str, Form()] = "/",
+    csrf_token: Annotated[str, Form()] = "",
+    settings: Settings = Depends(get_settings),
+):
+    if valid_csrf(request, csrf_token) and valid_credentials(settings, username, password):
+        request.session["authenticated"] = True
+        return RedirectResponse(safe_next_path(next), status_code=303)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={
+            "next": safe_next_path(next),
+            "error": "Invalid username or password.",
+            "auth_enabled": settings.auth_enabled,
+        },
+        status_code=401,
+    )
+
+
+@router.post("/logout")
+def logout(request: Request, csrf_token: Annotated[str, Form()] = ""):
+    if not valid_csrf(request, csrf_token):
+        raise HTTPException(403, "Invalid CSRF token")
+    request.session.clear()
+    return RedirectResponse("/login", status_code=303)
+
+
+@router.get("/", response_class=HTMLResponse)
+def dashboard(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    data = dashboard_data(db)
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard.html",
+        context=data,
+    )
+
+
+@router.get("/players", response_class=HTMLResponse)
+def players(
+    request: Request,
+    position: str | None = None,
+    max_price: float | None = None,
+    max_rotation: float | None = None,
+    min_minutes: int | None = None,
+    min_starts: int | None = None,
+    min_start_rate: float | None = None,
+    min_reliable_value: float | None = None,
+    min_forward_value: float | None = None,
+    max_ownership: float | None = None,
+    status: str | None = None,
+    team_id: int | None = None,
+    sort: str = "reliable_value",
+    db: Session = Depends(get_db),
+):
+    rows = filtered_players(
+        db,
+        position=position or None,
+        max_price=max_price,
+        max_rotation=max_rotation,
+        min_minutes=min_minutes,
+        min_starts=min_starts,
+        min_start_rate=min_start_rate,
+        min_reliable_value=min_reliable_value,
+        min_forward_value=min_forward_value,
+        max_ownership=max_ownership,
+        status=status,
+        team_id=team_id,
+        sort=sort,
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="players.html",
+        context={
+            "rows": rows,
+            "position": position or "",
+            "max_price": max_price,
+            "max_rotation": max_rotation,
+            "min_minutes": min_minutes,
+            "min_starts": min_starts,
+            "min_start_rate": min_start_rate,
+            "min_reliable_value": min_reliable_value,
+            "min_forward_value": min_forward_value,
+            "max_ownership": max_ownership,
+            "status": status or "",
+            "team_id": team_id,
+            "sort": sort,
+        },
+    )
+
+
+@router.get("/players/{player_id}", response_class=HTMLResponse)
+def player_detail(
+    request: Request,
+    player_id: int,
+    db: Session = Depends(get_db),
+):
+    player = db.get(Player, player_id)
+    if player is None:
+        raise HTTPException(404, "Player not found")
+    history = player_history(db, player_id)
+    if not history:
+        raise HTTPException(404, "No player history available")
+    return templates.TemplateResponse(
+        request=request,
+        name="player_detail.html",
+        context={
+            "player": player,
+            "current": history[-1],
+            "history": history,
+        },
+    )
+
+
+@router.get("/forward", response_class=HTMLResponse)
+def forward_page(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    rows = filtered_players(db, sort="forward_value")
+    return templates.TemplateResponse(
+        request=request,
+        name="metric_table.html",
+        context={
+            "title": "Forward Value",
+            "description": (
+                "Projected points over the next fixtures divided by price."
+            ),
+            "rows": rows,
+            "primary_metric": "forward_value",
+        },
+    )
+
+
+@router.get("/rotation", response_class=HTMLResponse)
+def rotation_page(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    rows = filtered_players(db, sort="rotation_risk")
+    return templates.TemplateResponse(
+        request=request,
+        name="metric_table.html",
+        context={
+            "title": "Rotation Risk",
+            "description": (
+                "A transparent 0–100 estimate based on start and minute security."
+            ),
+            "rows": rows,
+            "primary_metric": "rotation_risk",
+        },
+    )
+
+
+@router.get("/transfers", response_class=HTMLResponse)
+def transfer_finder(
+    request: Request,
+    position: str | None = None,
+    max_price: float | None = None,
+    max_rotation: float | None = None,
+    min_expected_minutes: int | None = None,
+    min_reliable_percentile: float | None = None,
+    min_forward_percentile: float | None = None,
+    max_ownership: float | None = None,
+    db: Session = Depends(get_db),
+):
+    rows = filtered_players(db, position=position, max_price=max_price, max_rotation=max_rotation, sort="forward_value")
+    candidates = []
+    for row in rows:
+        snapshot = row["snapshot"]
+        if min_expected_minutes is not None and snapshot.expected_minutes < min_expected_minutes:
+            continue
+        if min_reliable_percentile is not None and (snapshot.reliable_percentile or 0) < min_reliable_percentile:
+            continue
+        if min_forward_percentile is not None and (snapshot.forward_percentile or 0) < min_forward_percentile:
+            continue
+        if max_ownership is not None and snapshot.ownership > max_ownership:
+            continue
+        if snapshot.availability_factor <= 0:
+            continue
+        candidates.append(row)
+    return templates.TemplateResponse(request=request, name="transfers.html", context={
+        "rows": candidates, "position": position or "", "max_price": max_price,
+        "max_rotation": max_rotation, "min_expected_minutes": min_expected_minutes,
+        "min_reliable_percentile": min_reliable_percentile,
+        "min_forward_percentile": min_forward_percentile, "max_ownership": max_ownership,
+    })
+
+
+@router.get("/diagnostics", response_class=HTMLResponse)
+def diagnostics(request: Request, db: Session = Depends(get_db)):
+    data = diagnostics_data(db)
+    return templates.TemplateResponse(request=request, name="diagnostics.html", context=data)
+
+
+@router.get("/movers", response_class=HTMLResponse)
+def movers_page(
+    request: Request,
+    period: str = "7D",
+    db: Session = Depends(get_db),
+):
+    if period not in {"1D", "7D", "30D"}:
+        period = "7D"
+    rows = filtered_players(db, sort="reliable_value")
+    comparable = [row for row in rows if row["history"][period]["delta_value"] is not None]
+    risers = sorted(
+        comparable,
+        key=lambda row: row["history"][period]["delta_value"],
+        reverse=True,
+    )
+    fallers = sorted(
+        comparable,
+        key=lambda row: row["history"][period]["delta_value"],
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="movers.html",
+        context={
+            "period": period,
+            "risers": risers,
+            "fallers": fallers,
+            "movers": movers_data(db, period),
+        },
+    )
+
+
+@router.get("/compare", response_class=HTMLResponse)
+def compare(
+    request: Request,
+    ids: Annotated[list[int] | None, Query()] = None,
+    db: Session = Depends(get_db),
+):
+    all_rows = filtered_players(db, sort="reliable_value")
+    selected_ids = (ids or [])[:5]
+    selected = [
+        row for row in all_rows
+        if row["player"].id in selected_ids
+    ]
+    return templates.TemplateResponse(
+        request=request,
+        name="compare.html",
+        context={
+            "all_rows": all_rows,
+            "selected": selected,
+            "selected_ids": selected_ids,
+        },
+    )
+
+
+@router.get("/schema", response_class=HTMLResponse)
+def schema_page(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    return templates.TemplateResponse(
+        request=request,
+        name="schema.html",
+        context={"changes": recent_schema_changes(db, 200)},
+    )
+
+
+@router.get("/exports/current.csv")
+def export_csv(db: Session = Depends(get_db)):
+    return Response(
+        csv_bytes(db),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": (
+                'attachment; filename="fpl_value_rankings.csv"'
+            )
+        },
+    )
+
+
+@router.get("/exports/current.xlsx")
+def export_xlsx(db: Session = Depends(get_db)):
+    return Response(
+        xlsx_bytes(db),
+        media_type=(
+            "application/vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"
+        ),
+        headers={
+            "Content-Disposition": (
+                'attachment; filename="fpl_value_analysis.xlsx"'
+            )
+        },
+    )
+
+
+@router.post("/admin/refresh")
+def manual_refresh(
+    request: Request,
+    csrf_token: Annotated[str, Form()] = "",
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_db),
+):
+    if not valid_csrf(request, csrf_token):
+        raise HTTPException(403, "Invalid CSRF token")
+    refresh_data(db, settings, FPLClient(settings))
+    return RedirectResponse("/", status_code=303)

@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Model Diagnostics · FPL Value Studio{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">MODEL HEALTH</p><h1>Diagnostics with honest evidence.</h1><p>Projection and rotation diagnostics compare stored snapshots only when enough history exists.</p></div></div>
+<section class="cards"><article class="stat"><span>Players with history</span><strong>{{ history_points }}</strong></article><article class="stat"><span>Calibration status</span><strong class="small-value">{{ "Available" if sufficient else "Insufficient data" }}</strong></article></section>
+<article class="panel"><p class="{{ "" if sufficient else "muted" }}">{{ message }}</p>{% if sufficient %}<p class="muted">Actual next-match/gameweek outcomes are not yet joined to projection snapshots in this release; add gameweek history before treating error metrics as production-calibrated.</p>{% endif %}</article>
+{% endblock %}

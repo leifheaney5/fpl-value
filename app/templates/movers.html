@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Movers · FPL Value Studio{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><p class="eyebrow">HISTORICAL MOVEMENT</p><h1>{{ period }} value and price movers.</h1><p>Positive rank change means the player moved upward in the value rankings.</p></div>
+</div>
+
+<div class="period-tabs">
+  {% for item in ["1D","7D","30D"] %}
+    <a class="button {{ 'secondary' if item == period else 'ghost' }}" href="/movers?period={{ item }}">{{ item }}</a>
+  {% endfor %}
+</div>
+
+<section class="dashboard-grid">
+  {% for title, rows, direction in [
+    ("Value risers", risers, "increase"),
+    ("Value fallers", fallers, "decrease")
+  ] %}
+  <article class="panel">
+    <h2>{{ title }}</h2>
+    <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Player</th><th>Price</th><th>Value</th><th>Δ Value</th><th>Δ Price</th><th>Δ Ownership</th><th>Δ Rank</th></tr></thead>
+      <tbody>
+      {% for row in rows %}
+        <tr>
+          <td><a href="/players/{{ row.player.id }}">{{ row.player.full_name }}</a><small>{{ row.team.short_name }} · {{ row.player.position_short }}</small></td>
+          <td>£{{ "%.1f"|format(row.snapshot.price) }}</td>
+          <td>{{ "%.2f"|format(row.snapshot.value) }}</td>
+          <td><span class="movement {{ row.history[period].value_direction|lower|replace(' ', '-') }}">{{ "%+.2f"|format(row.history[period].delta_value) }}</span></td>
+          <td><span class="movement {{ row.history[period].price_direction|lower|replace(' ', '-') }}">{{ "%+.1f"|format(row.history[period].delta_price) }}</span></td>
+          <td>{{ "%+.2f"|format(row.history[period].delta_ownership) }}</td>
+          <td>{{ "%+d"|format(row.history[period].delta_rank) if row.history[period].delta_rank is not none else "—" }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="empty">Not enough {{ period }} history yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </article>
+  {% endfor %}
+</section>
+
+<section class="dashboard-grid">
+  {% for metric, label in [("price", "Price"), ("ownership", "Ownership"), ("rank", "Rank")] %}
+  <article class="panel">
+    <h2>{{ label }} risers and fallers</h2>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Player</th><th>Risers</th><th>Fallers</th></tr></thead>
+        <tbody>
+        {% for index in range([movers[metric + '_risers']|length, movers[metric + '_fallers']|length]|max) %}
+          <tr>
+            <td>{{ index + 1 }}</td>
+            <td>{% if movers[metric + '_risers'][index] is defined %}<a href="/players/{{ movers[metric + '_risers'][index].player.id }}">{{ movers[metric + '_risers'][index].player.full_name }}</a>{% endif %}</td>
+            <td>{% if movers[metric + '_fallers'][index] is defined %}<a href="/players/{{ movers[metric + '_fallers'][index].player.id }}">{{ movers[metric + '_fallers'][index].player.full_name }}</a>{% endif %}</td>
+          </tr>
+        {% else %}<tr><td colspan="3" class="empty">Not enough history yet.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+  {% endfor %}
+</section>
+{% endblock %}
