@@ -36,7 +36,7 @@ from app.services.queries import (
 )
 from app.services.refresh import refresh_data
 from app.services.my_team import linked_team_data, transfer_plan
-from app.services.team_recommender import STRATEGIES, recommend_team
+from app.services.team_recommender import STRATEGIES, recommend_team_cached
 from app.web.auth import safe_next_path, valid_credentials, valid_csrf
 
 
@@ -329,7 +329,7 @@ def recommendation_page(
     recommendation = None
     error = None
     try:
-        recommendation = recommend_team(latest_rows(db), budget_value, strategy)
+        recommendation = recommend_team_cached(latest_rows(db), budget_value, strategy)
     except ValueError as exc:
         error = str(exc)
     team = linked_team_data(db, FPLClient(settings), settings)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from threading import RLock
 from typing import Any
 
 
@@ -22,6 +23,9 @@ STRATEGIES = {
     "differential": {"label": "Differentials", "projected": .55, "raw": .12, "reliable": .10, "forward": .08, "availability": 1.5, "risk": .01, "ownership": -.025},
     "value": {"label": "Value First", "projected": .25, "raw": .30, "reliable": .28, "forward": .12, "availability": 1.5, "risk": .02, "ownership": .0},
 }
+_RECOMMENDATION_CACHE: dict[tuple[Any, float, str], dict[str, Any]] = {}
+_RECOMMENDATION_CACHE_LOCK = RLock()
+_MAX_CACHE_ENTRIES = 24
 
 
 def _projected_output(row: dict[str, Any]) -> float:
@@ -88,8 +92,10 @@ def _candidates(rows: list[dict[str, Any]], position: str, strategy: str) -> lis
     position_rows = [row for row in rows if row["player"].position_short == position and row["snapshot"].price > 0]
     ranked = sorted(position_rows, key=lambda row: _score(row, strategy), reverse=True)
     cheapest = sorted(position_rows, key=lambda row: row["snapshot"].price)
-    unique = {row["player"].id: row for row in ranked[:30]}
-    unique.update({row["player"].id: row for row in cheapest[:10]})
+    # Keep enough expensive and budget options to find a strong squad, without
+    # expanding the combinatorial search to every player in the database.
+    unique = {row["player"].id: row for row in ranked[:20]}
+    unique.update({row["player"].id: row for row in cheapest[:6]})
     for club_id in {row["team"].id for row in position_rows}:
         club_players = [row for row in cheapest if row["team"].id == club_id]
         if club_players:
@@ -153,6 +159,7 @@ def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: 
         raise ValueError("No valid squad fits the selected budget and club limits.")
     states = [(0, 0.0, [], Counter())]
     beam_failed = False
+    score_by_id = {row["player"].id: _score(row, strategy) for items in candidates.values() for row in items}
     for position, count in POSITION_COUNTS.items():
         for _ in range(count):
             next_states = []
@@ -168,13 +175,13 @@ def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: 
                         continue
                     updated_clubs = clubs.copy()
                     updated_clubs[club_id] += 1
-                    next_states.append((spent + price_units, score + _score(row, strategy), selected + [row], updated_clubs))
+                    next_states.append((spent + price_units, score + score_by_id[player.id], selected + [row], updated_clubs))
             next_states.sort(key=lambda state: (state[1], -state[0]), reverse=True)
-            retained = next_states[:2200]
-            diverse = sorted(next_states, key=lambda state: (len(state[3]), state[1], -state[0]), reverse=True)[:800]
+            retained = next_states[:600]
+            diverse = sorted(next_states, key=lambda state: (len(state[3]), state[1], -state[0]), reverse=True)[:250]
             by_ids = {tuple(row["player"].id for row in state[2]): state for state in retained}
             by_ids.update({tuple(row["player"].id for row in state[2]): state for state in diverse})
-            states = list(by_ids.values())[:3000]
+            states = list(by_ids.values())[:850]
             if not states:
                 beam_failed = True
                 break
@@ -217,6 +224,24 @@ def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: 
         "strategy_label": STRATEGIES[strategy]["label"],
         "formation": best_formation,
         "starting": [decorate(row, "Starting XI") for row in best_starting],
-        "bench": [decorate(row, "Bench") for row in sorted((row for row in selected if row["player"].id not in starting_ids), key=lambda row: _score(row, strategy), reverse=True)],
+        "bench": [decorate(row, "Bench") for row in sorted((row for row in selected if row["player"].id not in starting_ids), key=lambda row: score_by_id.get(row["player"].id, _score(row, strategy)), reverse=True)],
         "method": f"{STRATEGIES[strategy]['label']} mode: the squad is selected to maximize projected starting-XI output, with captaincy, expected minutes, availability, formation, and bench depth considered before value metrics are used as tie-breakers; constrained by FPL squad rules.",
     }
+
+
+def recommend_team_cached(rows: list[dict[str, Any]], budget: float = 100.0, strategy: str = "best_team") -> dict[str, Any]:
+    """Cache recommendations until the latest database snapshot changes."""
+    latest = max((getattr(row["snapshot"], "captured_at", None) for row in rows), default=None)
+    snapshot_key = latest.isoformat() if latest is not None else len(rows)
+    key = (snapshot_key, round(budget, 1), strategy)
+    with _RECOMMENDATION_CACHE_LOCK:
+        cached = _RECOMMENDATION_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    result = recommend_team(rows, budget, strategy)
+    with _RECOMMENDATION_CACHE_LOCK:
+        _RECOMMENDATION_CACHE[key] = result
+        while len(_RECOMMENDATION_CACHE) > _MAX_CACHE_ENTRIES:
+            _RECOMMENDATION_CACHE.pop(next(iter(_RECOMMENDATION_CACHE)))
+    return result
