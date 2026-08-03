@@ -21,8 +21,12 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://fpl:fpl@db:5432/fpl
       SESSION_SECRET: local-development-secret
+      # private = every page requires sign-in. Use demo to serve the market
+      # analytics publicly while keeping personal data and mutations closed.
+      ACCESS_MODE: private
       APP_USERNAME: admin
       APP_PASSWORD: admin
+      CURRENT_SEASON: "2026/27"
       APP_TIMEZONE: America/New_York
       REFRESH_HOUR: 10
     ports:

@@ -5,6 +5,23 @@ analysis. It replaces the single-file spreadsheet exporter with a persistent
 database, a web dashboard, a scheduled refresh service, and on-demand
 CSV/Excel exports.
 
+## Before you deploy
+
+Set `ACCESS_MODE`, `APP_USERNAME`, `APP_PASSWORD` and `SESSION_SECRET`. Access
+control fails closed: absent credentials keep personal pages and mutations shut
+rather than opening them. `ACCESS_MODE` defaults to `demo`, which serves the
+impersonal market analytics publicly and requires sign-in for anything about
+your own team. See [docs/SECURITY.md](docs/SECURITY.md).
+
+## Reading the numbers
+
+A blank or "Not available" reading is not a zero. Metrics whose inputs do not
+exist yet — everything derived from match data, before a match has been played —
+have no value and say so, rather than displaying `0.00`. See
+[docs/METRICS.md](docs/METRICS.md) for each metric's formula and null behaviour,
+and [docs/SEASON_STATE.md](docs/SEASON_STATE.md) for why a feature may decline
+to produce a result.
+
 ## What is included
 
 - FastAPI web application
@@ -29,7 +46,11 @@ CSV/Excel exports.
 - API schema-change history
 - Optional per-player gameweek history collection through the public element-summary endpoint
 - CSV and styled Excel exports
-- Optional username/password protection
+- Fail-closed access control with demo, private and local modes
+- Audit log of sign-ins and mutations
+- Explicit season identity on every snapshot, with cross-season comparison rejected
+- Missing-versus-zero metric semantics with per-metric status and reason
+- Centralised season state and per-feature readiness
 - Railway Docker and cron configuration
 - Automated tests
 
@@ -136,8 +157,10 @@ Required variables:
 ```text
 DATABASE_URL
 SESSION_SECRET
+ACCESS_MODE=demo
 APP_USERNAME
 APP_PASSWORD
+CURRENT_SEASON=2026/27
 APP_TIMEZONE=America/New_York
 REFRESH_HOUR=10
 COLLECT_GAMEWEEK_HISTORY=false
@@ -194,15 +217,22 @@ data**. Future refreshes are handled by the cron service.
 
 ## Authentication
 
-Authentication is enabled when both variables are present:
+Access is controlled by `ACCESS_MODE`, which defaults to `demo`:
 
-```text
-APP_USERNAME
-APP_PASSWORD
-```
+| Mode | Analytics | Personal | Mutations |
+| --- | --- | --- | --- |
+| `demo` | Public | Sign-in | Sign-in |
+| `private` | Sign-in | Sign-in | Sign-in |
+| `local` | Open | Open | Open (SQLite only) |
 
-For a public read-only application, leave both unset. A private deployment is
-strongly recommended while the application is single-user.
+Leaving `APP_USERNAME` and `APP_PASSWORD` unset does **not** make the
+application public. It leaves personal pages and mutations closed with no way to
+open them. This is deliberate: the previous behaviour, where absent credentials
+disabled the authentication check entirely, published the linked manager's name
+and entry ID and left the refresh endpoint open to anyone.
+
+Full details, including Tailscale setup, are in
+[docs/SECURITY.md](docs/SECURITY.md).
 
 ## Data model
 
@@ -266,7 +296,6 @@ additional source-specific collection and validation.
 - Export files are generated on demand and streamed to the browser.
 - Keep the web and cron services on the same code revision.
 - Review `/schema` after FPL launches a new season or changes its API fields.
-
 
 ## Migrating from the local v7/v8 exporter
 

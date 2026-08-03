@@ -39,3 +39,28 @@ Template teams call the existing full-squad optimizer, which enforces the
 15-player composition, budget, formation, and maximum-three-per-club rules.
 Price-slot alternatives are same-position, at-or-below-price candidates sorted
 by projected five-fixture points and forward value.
+
+## Missing values, seasons and readiness
+
+Three rules govern every number this application shows. They are documented in
+full in `docs/METRICS.md` and `docs/SEASON_STATE.md`.
+
+1. **A blank is not a zero.** Derived metrics are nullable. When the inputs for
+   a metric do not exist — which is the case for everything derived from match
+   data before a match has been played — the metric has no value and the
+   interface says so. `0.00` means the calculation ran and the answer was zero.
+
+2. **Seasons do not mix.** Every snapshot records the season it describes, every
+   query filters on it, and differencing two seasons raises rather than
+   returning a number. A value delta across a season rollover looks like player
+   movement but measures a reset.
+
+3. **Features refuse rather than mislead.** Each feature declares its required
+   inputs, supported season states and minimum sample. When they are not met the
+   feature reports `not_ready`, names the failing checks and states what would
+   activate it, instead of producing a result its inputs cannot support.
+
+The clearest example of rule 3 is the team builder. With no projections it
+previously returned a legal squad costing about £40m with the rest of the budget
+unspent — a real-looking recommendation with nothing behind it. It now refuses
+and explains why.
