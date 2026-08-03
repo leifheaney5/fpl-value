@@ -21,6 +21,7 @@ app.add_middleware(
     secret_key=settings.session_secret,
     same_site="lax",
     https_only=settings.production_cookie_secure,
+    max_age=settings.session_max_age_seconds,
 )
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(router)

@@ -282,6 +282,20 @@ class GameweekHistory(Base):
     raw: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    action: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    actor: Mapped[str] = mapped_column(String(100), default="anonymous")
+    path: Mapped[str] = mapped_column(String(300), default="")
+    client: Mapped[str] = mapped_column(String(60), default="")
+    detail: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
 class ImportRecord(Base):
     __tablename__ = "import_records"
     __table_args__ = (UniqueConstraint("source_path", name="uq_import_source_path"),)

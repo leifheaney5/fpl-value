@@ -39,7 +39,15 @@ from app.services.my_team import linked_team_data, transfer_plan
 from app.services.team_recommender import STRATEGIES, recommend_team_cached
 from app.services.player_intelligence import build_player_intelligence
 from app.services.template_teams import price_slot_suggestions, template_summaries
-from app.web.auth import safe_next_path, valid_credentials, valid_csrf
+from app.web import audit
+from app.web.auth import (
+    client_key,
+    is_authenticated,
+    login_throttle,
+    safe_next_path,
+    valid_credentials,
+    valid_csrf,
+)
 
 
 router = APIRouter()
@@ -73,7 +81,7 @@ def login_page(
         name="login.html",
         context={
             "next": safe_next_path(next),
-            "auth_enabled": settings.auth_enabled,
+            "credentials_configured": settings.credentials_configured,
         },
     )
 
@@ -86,27 +94,53 @@ def login(
     next: Annotated[str, Form()] = "/",
     csrf_token: Annotated[str, Form()] = "",
     settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_db),
 ):
+    key = client_key(request)
+    if login_throttle.locked_out(
+        key, settings.login_max_attempts, settings.login_lockout_seconds
+    ):
+        audit.record(db, "login.throttled", request, actor=username)
+        return templates.TemplateResponse(
+            request=request,
+            name="login.html",
+            context={
+                "next": safe_next_path(next),
+                "error": "Too many failed attempts. Try again later.",
+                "credentials_configured": settings.credentials_configured,
+            },
+            status_code=429,
+        )
+
     if valid_csrf(request, csrf_token) and valid_credentials(settings, username, password):
+        login_throttle.clear(key)
         request.session["authenticated"] = True
+        audit.record(db, "login.success", request, actor=username)
         return RedirectResponse(safe_next_path(next), status_code=303)
 
+    login_throttle.record_failure(key)
+    audit.record(db, "login.failure", request, actor=username)
     return templates.TemplateResponse(
         request=request,
         name="login.html",
         context={
             "next": safe_next_path(next),
             "error": "Invalid username or password.",
-            "auth_enabled": settings.auth_enabled,
+            "credentials_configured": settings.credentials_configured,
         },
         status_code=401,
     )
 
 
 @router.post("/logout")
-def logout(request: Request, csrf_token: Annotated[str, Form()] = ""):
+def logout(
+    request: Request,
+    csrf_token: Annotated[str, Form()] = "",
+    db: Session = Depends(get_db),
+):
     if not valid_csrf(request, csrf_token):
         raise HTTPException(403, "Invalid CSRF token")
+    audit.record(db, "logout", request)
     request.session.clear()
     return RedirectResponse("/login", status_code=303)
 
@@ -118,7 +152,14 @@ def dashboard(
     settings: Settings = Depends(get_settings),
 ):
     data = dashboard_data(db)
-    data["my_team"] = linked_team_data(db, FPLClient(settings), settings)
+    # Privacy by exclusion: personal data is never placed in a context an
+    # anonymous visitor can receive, rather than being masked at render time.
+    data["authenticated"] = is_authenticated(request)
+    data["my_team"] = (
+        linked_team_data(db, FPLClient(settings), settings)
+        if data["authenticated"]
+        else None
+    )
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
@@ -365,6 +406,11 @@ def my_team_page(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
+    # Defence in depth: the middleware already refuses anonymous requests to
+    # this path, but the personal fetch stays behind an explicit check so a
+    # future change to PROTECTION_MAP cannot silently expose it.
+    if not is_authenticated(request) and settings.require_auth_for("PERSONAL"):
+        return RedirectResponse("/login?next=/my-team", status_code=303)
     return templates.TemplateResponse(
         request=request,
         name="my_team.html",
@@ -388,8 +434,12 @@ def recommendation_page(
         recommendation = recommend_team_cached(latest_rows(db), budget_value, strategy)
     except ValueError as exc:
         error = str(exc)
-    team = linked_team_data(db, FPLClient(settings), settings)
-    return templates.TemplateResponse(request=request, name="recommendation.html", context={"recommendation": recommendation, "error": error, "budget": budget_value, "strategy": strategy, "strategies": STRATEGIES, "my_team": team, "transfer_plan": transfer_plan(team, recommendation)})
+    team = (
+        linked_team_data(db, FPLClient(settings), settings)
+        if is_authenticated(request)
+        else None
+    )
+    return templates.TemplateResponse(request=request, name="recommendation.html", context={"recommendation": recommendation, "error": error, "budget": budget_value, "strategy": strategy, "strategies": STRATEGIES, "my_team": team, "transfer_plan": transfer_plan(team, recommendation) if team else None})
 
 
 @router.get("/movers", response_class=HTMLResponse)
@@ -495,6 +545,8 @@ def manual_refresh(
     db: Session = Depends(get_db),
 ):
     if not valid_csrf(request, csrf_token):
+        audit.record(db, "admin.refresh.denied", request)
         raise HTTPException(403, "Invalid CSRF token")
+    audit.record(db, "admin.refresh", request)
     refresh_data(db, settings, FPLClient(settings))
     return RedirectResponse("/", status_code=303)

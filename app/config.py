@@ -6,6 +6,10 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+ACCESS_MODES = ("demo", "private", "local")
+PROTECTION_CLASSES = ("PUBLIC", "ANALYTICS", "PERSONAL", "MUTATION")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -18,6 +22,11 @@ class Settings(BaseSettings):
     session_secret: str = "development-only-secret-change-me"
     app_username: str | None = None
     app_password: str | None = None
+    access_mode: str = "demo"
+    current_season: str = "2026/27"
+    session_max_age_seconds: int = Field(default=43200, ge=300)
+    login_max_attempts: int = Field(default=5, ge=1)
+    login_lockout_seconds: int = Field(default=900, ge=30)
     app_timezone: str = "America/New_York"
     refresh_hour: int = Field(default=10, ge=0, le=23)
     forward_fixture_count: int = Field(default=5, ge=1, le=10)
@@ -48,6 +57,15 @@ class Settings(BaseSettings):
             raise ValueError("Analytics model weights must have a positive total")
         if bool(self.app_username) != bool(self.app_password):
             raise ValueError("APP_USERNAME and APP_PASSWORD must be supplied together")
+        if self.access_mode not in ACCESS_MODES:
+            raise ValueError(
+                f"ACCESS_MODE must be one of {', '.join(ACCESS_MODES)}"
+            )
+        if self.access_mode == "local" and not self.database_url.startswith("sqlite"):
+            raise ValueError(
+                "ACCESS_MODE=local disables authentication and is only permitted "
+                "with a SQLite database"
+            )
         return self
     fpl_bootstrap_url: str = (
         "https://fantasy.premierleague.com/api/bootstrap-static/"
@@ -58,8 +76,22 @@ class Settings(BaseSettings):
     fpl_entry_id: int | None = Field(default=None, ge=1)
 
     @property
-    def auth_enabled(self) -> bool:
+    def credentials_configured(self) -> bool:
         return bool(self.app_username and self.app_password)
+
+    def require_auth_for(self, protection: str) -> bool:
+        """Decide whether a protection class needs a signed-in session.
+
+        Deliberately independent of whether credentials happen to be set:
+        absent credentials must deny access, never grant it.
+        """
+        if protection == "PUBLIC":
+            return False
+        if self.access_mode == "local":
+            return False
+        if protection in ("PERSONAL", "MUTATION"):
+            return True
+        return self.access_mode == "private"
 
     @property
     def sqlalchemy_url(self) -> str:

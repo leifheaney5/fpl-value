@@ -16,8 +16,8 @@
     <label>Username<input name="username" autocomplete="username" required></label>
     <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
     <button type="submit">Sign in</button>
-    {% if not auth_enabled %}
-      <p class="muted">Authentication is disabled until APP_USERNAME and APP_PASSWORD are set.</p>
+    {% if not credentials_configured %}
+      <p class="muted">No credentials are configured, so sign-in is unavailable and every personal page stays closed. Set APP_USERNAME and APP_PASSWORD to enable access.</p>
     {% endif %}
   </form>
 </body>

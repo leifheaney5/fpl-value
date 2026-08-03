@@ -24,8 +24,10 @@ def test_web_routes_health_exports_and_new_pages(tmp_path):
     try:
         client = TestClient(app)
         assert client.get("/health").status_code == 200
-        for path in ["/", "/players", "/spreadsheet", "/my-team", "/recommendation", "/transfers", "/movers", "/compare", "/diagnostics", "/schema", "/settings", "/differentials", "/transfer-market", "/templates"]:
+        for path in ["/", "/players", "/spreadsheet", "/recommendation", "/transfers", "/movers", "/compare", "/diagnostics", "/schema", "/settings", "/differentials", "/transfer-market", "/templates"]:
             assert client.get(path).status_code == 200
+        # Personal routes stay closed to anonymous visitors even in demo mode.
+        assert client.get("/my-team", follow_redirects=False).status_code == 303
         assert client.get("/players?position=MID").url.path == "/spreadsheet"
         assert client.get("/players?max_price=&min_minutes=&max_ownership=not-a-number").status_code == 200
         login_page = client.get("/login")
@@ -44,9 +46,11 @@ def test_web_routes_health_exports_and_new_pages(tmp_path):
 
 def test_credentials_use_constant_time_path_and_safe_redirect():
     settings = Settings(app_username="admin", app_password="secret")
-    assert settings.auth_enabled
+    assert settings.credentials_configured
     assert valid_credentials(settings, "admin", "secret")
     assert not valid_credentials(settings, "admin", "wrong")
+    # Fail closed: with no credentials configured nothing authenticates.
+    assert not valid_credentials(Settings(), "admin", "secret")
     assert safe_next_path("/players") == "/players"
     assert safe_next_path("https://example.invalid") == "/"
     assert safe_next_path("//example.invalid") == "/"
