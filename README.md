@@ -257,6 +257,26 @@ python -m app.cli evaluate --output docs/evaluation-baseline.json
 See [docs/MODEL_EVALUATION.md](docs/MODEL_EVALUATION.md) for the recorded
 results and the bar a trained model has to clear.
 
+Train a model offline and export it for serving:
+
+```bash
+pip install -e ".[train]"
+python scripts/train.py --output models/preseason_v1 --state preseason
+```
+
+Training refuses to write an artefact that has not beaten the deployed
+heuristic on the held-out season. That is deliberate: a model that loses to
+what it replaces would make the application worse. Pass `--force` to override,
+and the override is recorded in the artefact's manifest.
+
+Training uses PyTorch and runs on a development machine. Production loads the
+exported ONNX graph through `onnxruntime` and never imports torch, which keeps
+roughly 800MB of training stack out of the deployed image.
+
+**Rolling back** is pointing at a previous artefact directory: each one carries
+its own manifest recording the model version, feature version, training seasons,
+seed and held-out scores.
+
 ## Data model
 
 The database stores:

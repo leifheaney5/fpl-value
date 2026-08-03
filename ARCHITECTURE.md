@@ -29,6 +29,12 @@ Railway cron service. Each successful run stores immutable player snapshots.
 | `app/models/baselines.py` | Baselines a trained model must beat before shipping. |
 | `app/models/metrics.py` | Accuracy, rank correlation and calibration. |
 | `app/models/evaluation.py` | Walk-forward backtesting. |
+| `app/models/dataset.py` | Materialise features into aligned arrays once per state. |
+| `app/models/candidates.py` | Trainable candidates and the `TrainableModel` protocol. |
+| `app/models/network.py` | Two-stage minutes-then-events model. **Training only — never imported in production.** |
+| `app/models/artefact.py` | Manifest, ONNX export, and serving through onnxruntime. |
+| `app/services/predictions.py` | Produce and store predictions, or report why it cannot. |
+| `scripts/train.py` | Offline training. Refuses to write an artefact that fails the gate. |
 
 ## Tables
 
@@ -66,7 +72,27 @@ metric columns.
    or after the prediction time before computing anything, and is tested with
    deliberately poisoned future rows.
 8. **A model ships only if it beats the baselines.** `app/models/evaluation.py`
-   scores the deployed heuristic alongside any candidate on held-out seasons.
+   scores the deployed heuristic alongside any candidate on held-out seasons,
+   and `scripts/train.py` refuses to write an artefact that loses.
+9. **Training and serving are separate.** PyTorch trains offline; production
+   loads an ONNX graph through onnxruntime and never imports torch. A
+   subprocess test enforces it.
+
+## Model lifecycle
+
+```
+import-archive ─► gameweek_history ─► dataset ─► train (offline, PyTorch)
+                                                    │
+                                          gate: beat the heuristic?
+                                                    │ yes
+                                        artefact (ONNX + manifest)
+                                                    │
+                                   predictions table ─► readiness ─► UI
+```
+
+A model that fails the gate stops at the gate. The transparent
+`projected_points_5` heuristic stays in use, and the readiness registry reports
+it as the active fallback rather than implying a model is running.
 
 ## Known technical debt
 
