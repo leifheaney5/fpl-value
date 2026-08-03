@@ -23,6 +23,8 @@ EXPORT_COLUMNS = [
     ("Value", lambda row: row["snapshot"].value),
     ("Reliable Value", lambda row: row["snapshot"].reliable_value),
     ("Forward Value", lambda row: row["snapshot"].forward_value),
+    ("Projected Points", lambda row: row["snapshot"].projected_points_5),
+    ("Expected Minutes", lambda row: row["snapshot"].expected_minutes),
     ("Rotation Risk", lambda row: row["snapshot"].rotation_risk),
     ("Rotation Tier", lambda row: row["snapshot"].rotation_tier),
     ("PPG", lambda row: row["snapshot"].points_per_game),
@@ -119,6 +121,9 @@ def xlsx_bytes(db: Session) -> bytes:
     guide.append(["Reliable Value", "Value reduced by minutes, start share, and sample-size reliability."])
     guide.append(["Forward Value", "Heuristic projected points over the configured fixture window divided by price."])
     guide.append(["Rotation Risk", "Transparent 0-100 estimate; higher means less secure starts/minutes."])
+    guide.append(["Expected Minutes", "Observed minutes per team match, weighted by start share and availability."])
+    guide.append(["Empty cell", "The metric has no value: its inputs are not available yet. An empty cell is not a zero."])
+    guide.append(["0", "A measured zero. The calculation ran and the answer was zero."])
 
     sheet.freeze_panes = "A2"
 

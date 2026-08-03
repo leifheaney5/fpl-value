@@ -26,7 +26,7 @@
         <tr>
           <td><a href="/players/{{ row.player.id }}">{{ row.player.full_name }}</a><small>{{ row.team.short_name }} · {{ row.player.position_short }}</small></td>
           <td>£{{ "%.1f"|format(row.snapshot.price) }}</td>
-          <td>{{ "%.2f"|format(row.snapshot.value) }}</td>
+          <td>{{ metric_cell(row.snapshot, "value") }}</td>
           <td><span class="movement {{ row.history[period].value_direction|lower|replace(' ', '-') }}">{{ "%+.2f"|format(row.history[period].delta_value) }}</span></td>
           <td><span class="movement {{ row.history[period].price_direction|lower|replace(' ', '-') }}">{{ "%+.1f"|format(row.history[period].delta_price) }}</span></td>
           <td>{{ "%+.2f"|format(row.history[period].delta_ownership) }}</td>

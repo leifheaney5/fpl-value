@@ -19,11 +19,31 @@ def _rows():
 
 
 def test_template_summaries_reuse_legal_recommender_squads():
-    templates = template_summaries(_rows(), 100.0)
+    summary = template_summaries(_rows(), 100.0)
+    templates = summary["templates"]
 
     assert templates
+    assert summary["checks"] is None
     assert all(len(item["recommendation"]["starting"]) + len(item["recommendation"]["bench"]) == 15 for item in templates)
     assert all(item["recommendation"]["spent"] <= 100.0 for item in templates)
+
+
+def test_template_summaries_report_not_ready_instead_of_inventing_squads():
+    """With no projections, no template can be built and none is pretended."""
+    rows = _rows()
+    for row in rows:
+        row["snapshot"].projected_points_5 = None
+        row["snapshot"].points_per_game = None
+        row["snapshot"].expected_minutes = None
+
+    summary = template_summaries(rows, 100.0)
+
+    assert summary["templates"] == []
+    assert summary["checks"] is not None
+    failed = [check["name"] for check in summary["checks"] if not check["passed"]]
+    assert "projections_available" in failed
+    assert "objective_variation" in failed
+    assert summary["activates_when"]
 
 
 def test_price_slot_suggestions_are_same_position_affordable_and_ordered():

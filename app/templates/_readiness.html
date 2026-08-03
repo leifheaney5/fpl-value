@@ -1,0 +1,21 @@
+{# Shared refusal panel.
+
+   Shown when a feature declines to produce output because its inputs cannot
+   support one. It states which checks failed and what would make the feature
+   activate, so "nothing here" never reads as "nothing worth showing". #}
+{% macro not_ready(title, checks, activates_when) %}
+<section class="panel readiness">
+  <div class="panel-title"><h2>{{ title }}</h2><span class="muted">Not ready</span></div>
+  <p class="muted">{{ activates_when }}</p>
+  <ul class="readiness-checks">
+    {% for check in checks %}
+    <li class="{{ 'pass' if check.passed else 'fail' }}">
+      <strong>{{ "Ready" if check.passed else "Blocked" }}</strong>
+      · {{ check.detail }}
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="muted">Nothing is shown above because a result built from these
+  inputs would look like a recommendation without being one.</p>
+</section>
+{% endmacro %}

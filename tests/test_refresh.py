@@ -6,78 +6,10 @@ from sqlalchemy.orm import sessionmaker
 
 from app.config import Settings
 from app.db.base import Base
-from app.db.models import PlayerSnapshot, RefreshRun, SchemaChange
+from app.db.models import Gameweek, PlayerSnapshot, RefreshRun, SchemaChange
 from app.services.refresh import refresh_data
 
-
-class FakeClient:
-    def bootstrap(self):
-        return {
-            "teams": [
-                {"id": 1, "name": "Test FC", "short_name": "TST"},
-                {"id": 2, "name": "Other FC", "short_name": "OTH"},
-            ],
-            "element_types": [
-                {
-                    "id": 3,
-                    "singular_name": "Midfielder",
-                    "singular_name_short": "MID",
-                }
-            ],
-            "events": [{"id": 1, "finished": True}],
-            "elements": [
-                {
-                    "id": 10,
-                    "first_name": "Ada",
-                    "second_name": "Example",
-                    "web_name": "Ada",
-                    "team": 1,
-                    "element_type": 3,
-                    "now_cost": 50,
-                    "total_points": 50,
-                    "minutes": 900,
-                    "starts": 10,
-                    "goals_scored": 5,
-                    "assists": 4,
-                    "clean_sheets": 2,
-                    "bonus": 8,
-                    "bps": 200,
-                    "form": "5.0",
-                    "points_per_game": "5.0",
-                    "expected_goals": "4.0",
-                    "expected_assists": "3.0",
-                    "expected_goal_involvements": "7.0",
-                    "ict_index": "80.0",
-                    "selected_by_percent": "10.0",
-                    "status": "a",
-                    "news": "",
-                }
-            ],
-        }
-
-    def fixtures(self):
-        return [
-            {
-                "id": 1,
-                "event": 1,
-                "finished": True,
-                "kickoff_time": "2026-08-01T12:00:00Z",
-                "team_h": 1,
-                "team_a": 2,
-                "team_h_difficulty": 3,
-                "team_a_difficulty": 3,
-            },
-            {
-                "id": 2,
-                "event": 2,
-                "finished": False,
-                "kickoff_time": "2026-08-08T12:00:00Z",
-                "team_h": 2,
-                "team_a": 1,
-                "team_h_difficulty": 3,
-                "team_a_difficulty": 2,
-            },
-        ]
+from fakes import FakeClient, PreseasonClient
 
 
 def test_refresh_pipeline(tmp_path):
@@ -99,6 +31,69 @@ def test_refresh_pipeline(tmp_path):
         assert snapshot.value == 10.0
         assert snapshot.reliable_value > 0
         assert snapshot.forward_value > 0
+
+
+def test_preseason_refresh_stores_null_metrics_rather_than_zero(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'preseason.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(engine, expire_on_commit=False)
+    settings = Settings(
+        database_url=f"sqlite:///{tmp_path / 'preseason.db'}",
+        current_season="2026/27",
+    )
+
+    with Session() as db:
+        run = refresh_data(db, settings, PreseasonClient())
+        assert run.status == "success"
+
+        snapshot = db.scalar(select(PlayerSnapshot))
+        assert snapshot.season == "2026/27"
+        # No team has played, so none of these can be measured.
+        assert snapshot.expected_minutes is None
+        assert snapshot.start_rate is None
+        assert snapshot.reliability_factor is None
+        assert snapshot.reliable_value is None
+        assert snapshot.projected_points_5 is None
+        assert snapshot.forward_value is None
+        # Observations remain observations.
+        assert snapshot.minutes == 0
+        assert snapshot.total_points == 0
+
+        status = snapshot.metric_status["expected_minutes"]
+        assert status["status"] == "not_yet_available"
+        assert "No matches played" in status["reason"]
+
+        # And the run explains the ranking gap rather than leaving it implicit.
+        assert run.details["ranked_count"] == 0
+        assert sum(run.details["ranking_exclusions"].values()) == 1
+
+
+def test_preseason_refresh_records_the_season_calendar(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'calendar.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(engine, expire_on_commit=False)
+    settings = Settings(
+        database_url=f"sqlite:///{tmp_path / 'calendar.db'}",
+        current_season="2026/27",
+    )
+
+    with Session() as db:
+        refresh_data(db, settings, PreseasonClient())
+        gameweek = db.scalar(select(Gameweek))
+        assert gameweek.season == "2026/27"
+        assert gameweek.number == 1
+        assert gameweek.is_next is True
+        assert gameweek.deadline_time is not None
+
+        # Re-running must update in place rather than duplicate.
+        refresh_data(db, settings, PreseasonClient())
+        assert len(db.scalars(select(Gameweek)).all()) == 1
 
 
 def test_refresh_records_schema_removals_and_rejects_overlap(tmp_path):

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import io
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import (
     APIRouter,
@@ -20,6 +20,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from app.analytics.contracts import MetricValue, describe
 from app.api.fpl_client import FPLClient
 from app.config import Settings, get_settings
 from app.db.models import Player
@@ -36,7 +37,11 @@ from app.services.queries import (
 )
 from app.services.refresh import refresh_data
 from app.services.my_team import linked_team_data, transfer_plan
-from app.services.team_recommender import STRATEGIES, recommend_team_cached
+from app.services.team_recommender import (
+    NotReadyError,
+    STRATEGIES,
+    recommend_team_cached,
+)
 from app.services.player_intelligence import build_player_intelligence
 from app.services.template_teams import price_slot_suggestions, template_summaries
 from app.web import audit
@@ -52,6 +57,32 @@ from app.web.auth import (
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+
+
+def _metric(snapshot: Any, name: str) -> MetricValue:
+    """Pair a stored metric with the status recorded when it was calculated."""
+    return describe(
+        name,
+        getattr(snapshot, name, None),
+        getattr(snapshot, "metric_status", None),
+    )
+
+
+def _metric_cell(snapshot: Any, name: str, short: str = "—") -> str:
+    """Render a metric for a dense table.
+
+    Tables have no room for a full explanation, so an unavailable metric shows a
+    dash and carries its reason in the title attribute. What matters is that it
+    never shows a number it does not have.
+    """
+    value = _metric(snapshot, name)
+    return value.display if value.is_value else short
+
+
+templates.env.filters["metric"] = _metric
+templates.env.filters["metric_cell"] = _metric_cell
+templates.env.globals["metric"] = _metric
+templates.env.globals["metric_cell"] = _metric_cell
 
 
 def _optional_number(value: str | None, parser):
@@ -345,9 +376,15 @@ def differentials(
         rows = [row for row in rows if row["player"].position_short == position]
     if max_price is not None:
         rows = [row for row in rows if row["snapshot"].price <= max_price]
-    rows.sort(key=lambda row: row["differential"]["score"], reverse=True)
+
+    # Players whose score cannot be calculated are shown separately rather than
+    # ranked at the bottom, which would read as "scored, and scored badly".
+    scored = [row for row in rows if row["differential"]["score"] is not None]
+    unscored = [row for row in rows if row["differential"]["score"] is None]
+    scored.sort(key=lambda row: row["differential"]["score"], reverse=True)
     return templates.TemplateResponse(request=request, name="differentials.html", context={
-        "rows": rows, "ownership": ownership, "position": position or "", "max_price": max_price,
+        "rows": scored, "unscored": unscored, "ownership": ownership,
+        "position": position or "", "max_price": max_price,
     })
 
 
@@ -373,16 +410,26 @@ def templates_page(
 ):
     budget_value = max(50.0, min(100.0, _optional_number(budget, float) or 100.0))
     rows = latest_rows(db)
-    template_rows = []
+    summary = {"templates": [], "checks": None, "activates_when": None, "error": None}
     if rows:
-        for item in template_summaries(rows, budget_value):
+        summary = template_summaries(rows, budget_value)
+        for item in summary["templates"]:
             selected = item["recommendation"]["starting"] + item["recommendation"]["bench"]
             item["slots"] = [
                 {"selected": player, "alternatives": price_slot_suggestions(player["row"], rows)}
                 for player in selected
             ]
-            template_rows.append(item)
-    return templates.TemplateResponse(request=request, name="templates.html", context={"templates": template_rows, "budget": budget_value})
+    return templates.TemplateResponse(
+        request=request,
+        name="templates.html",
+        context={
+            "templates": summary["templates"],
+            "checks": summary["checks"],
+            "activates_when": summary["activates_when"],
+            "error": summary["error"],
+            "budget": budget_value,
+        },
+    )
 
 
 @router.get("/diagnostics", response_class=HTMLResponse)
@@ -430,8 +477,14 @@ def recommendation_page(
     budget_value = max(50.0, min(100.0, budget_value))
     recommendation = None
     error = None
+    checks = None
+    activates_when = None
     try:
         recommendation = recommend_team_cached(latest_rows(db), budget_value, strategy)
+    except NotReadyError as exc:
+        # Not an error: the inputs simply cannot support a recommendation yet.
+        checks = exc.checks
+        activates_when = exc.activates_when
     except ValueError as exc:
         error = str(exc)
     team = (
@@ -439,7 +492,7 @@ def recommendation_page(
         if is_authenticated(request)
         else None
     )
-    return templates.TemplateResponse(request=request, name="recommendation.html", context={"recommendation": recommendation, "error": error, "budget": budget_value, "strategy": strategy, "strategies": STRATEGIES, "my_team": team, "transfer_plan": transfer_plan(team, recommendation) if team else None})
+    return templates.TemplateResponse(request=request, name="recommendation.html", context={"recommendation": recommendation, "error": error, "checks": checks, "activates_when": activates_when, "budget": budget_value, "strategy": strategy, "strategies": STRATEGIES, "my_team": team, "transfer_plan": transfer_plan(team, recommendation) if team and recommendation else None})
 
 
 @router.get("/movers", response_class=HTMLResponse)
@@ -450,25 +503,18 @@ def movers_page(
 ):
     if period not in {"1D", "7D", "30D"}:
         period = "7D"
-    rows = filtered_players(db, sort="reliable_value")
-    comparable = [row for row in rows if row["history"][period]["delta_value"] is not None]
-    risers = sorted(
-        comparable,
-        key=lambda row: row["history"][period]["delta_value"],
-        reverse=True,
-    )
-    fallers = sorted(
-        comparable,
-        key=lambda row: row["history"][period]["delta_value"],
-    )
+    # A single source of movement classification, so the headline lists cannot
+    # disagree with the per-metric tables below them.
+    movers = movers_data(db, period)
     return templates.TemplateResponse(
         request=request,
         name="movers.html",
         context={
             "period": period,
-            "risers": risers,
-            "fallers": fallers,
-            "movers": movers_data(db, period),
+            "risers": movers["value_risers"],
+            "fallers": movers["value_fallers"],
+            "window": movers["value_window"],
+            "movers": movers,
         },
     )
 

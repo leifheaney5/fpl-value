@@ -33,7 +33,7 @@
   {% else %}
     <div class="team-summary"><span><strong>{{ my_team.overall_points or "—" }}</strong> points</span><span><strong>{{ my_team.overall_rank or "—" }}</strong> overall rank</span><span><strong>{{ my_team.event or "Pre-season" }}</strong> gameweek</span></div>
     {% if my_team.picks_available %}
-    <div class="table-wrap"><table><thead><tr><th>Player</th><th>Position</th><th>Price</th><th>Reliable</th><th>Forward</th><th>Captain</th></tr></thead><tbody>{% for item in my_team.squad %}<tr><td><a href="/players/{{ item.row.player.id }}">{{ item.row.player.full_name }}</a></td><td>{{ item.row.player.position_short }}</td><td>£{{ "%.1f"|format(item.row.snapshot.price) }}</td><td><span class="sheet-chip tier-{{ item.row.snapshot.reliable_tier|lower|replace(' ', '-')|replace('%','') }}">{{ "%.2f"|format(item.row.snapshot.reliable_value) }}</span></td><td><span class="sheet-chip tier-{{ item.row.snapshot.forward_tier|lower|replace(' ', '-')|replace('%','') }}">{{ "%.2f"|format(item.row.snapshot.forward_value) }}</span></td><td>{{ "Captain" if item.pick.get('is_captain') else "Vice-captain" if item.pick.get('is_vice_captain') else "—" }}</td></tr>{% endfor %}</tbody></table></div>
+    <div class="table-wrap"><table><thead><tr><th>Player</th><th>Position</th><th>Price</th><th>Reliable</th><th>Forward</th><th>Captain</th></tr></thead><tbody>{% for item in my_team.squad %}<tr><td><a href="/players/{{ item.row.player.id }}">{{ item.row.player.full_name }}</a></td><td>{{ item.row.player.position_short }}</td><td>£{{ "%.1f"|format(item.row.snapshot.price) }}</td><td><span class="sheet-chip tier-{{ item.row.snapshot.reliable_tier|lower|replace(' ', '-')|replace('%','') }}">{{ metric_cell(item.row.snapshot, "reliable_value") }}</span></td><td><span class="sheet-chip tier-{{ item.row.snapshot.forward_tier|lower|replace(' ', '-')|replace('%','') }}">{{ metric_cell(item.row.snapshot, "forward_value") }}</span></td><td>{{ "Captain" if item.pick.get('is_captain') else "Vice-captain" if item.pick.get('is_vice_captain') else "—" }}</td></tr>{% endfor %}</tbody></table></div>
     {% else %}<p class="muted">Your team is linked. Current picks will appear here when the gameweek squad endpoint becomes available.</p>{% endif %}
   {% endif %}
 </section>
@@ -50,7 +50,7 @@
           <td><a href="/players/{{ row.player.id }}">{{ row.player.full_name }}</a><small>{{ row.team.short_name }}</small></td>
           <td>{{ row.player.position_short }}</td>
           <td>£{{ "%.1f"|format(row.snapshot.price) }}</td>
-          <td><span class="badge tier-{{ row.snapshot.reliable_tier|lower|replace(' ', '-')|replace('%','') }}">{{ "%.2f"|format(row.snapshot.reliable_value) }}</span></td>
+          <td><span class="badge tier-{{ row.snapshot.reliable_tier|lower|replace(' ', '-')|replace('%','') }}">{{ metric_cell(row.snapshot, "reliable_value") }}</span></td>
         </tr>
       {% endfor %}
       </tbody>
@@ -66,8 +66,8 @@
         <tr>
           <td><a href="/players/{{ row.player.id }}">{{ row.player.full_name }}</a><small>{{ row.team.short_name }}</small></td>
           <td>{{ row.snapshot.upcoming_fixtures|length }}</td>
-          <td>{{ "%.1f"|format(row.snapshot.projected_points_5) }}</td>
-          <td><span class="badge tier-{{ row.snapshot.forward_tier|lower|replace(' ', '-')|replace('%','') }}">{{ "%.2f"|format(row.snapshot.forward_value) }}</span></td>
+          <td>{{ metric_cell(row.snapshot, "projected_points_5") }}</td>
+          <td><span class="badge tier-{{ row.snapshot.forward_tier|lower|replace(' ', '-')|replace('%','') }}">{{ metric_cell(row.snapshot, "forward_value") }}</span></td>
         </tr>
       {% endfor %}
       </tbody>
@@ -107,7 +107,7 @@
       {% for row in top_risers %}
         <tr>
           <td><a href="/players/{{ row.player.id }}">{{ row.player.full_name }}</a><small>{{ row.team.short_name }}</small></td>
-          <td>{{ "%.2f"|format(row.snapshot.value) }}</td>
+          <td>{{ metric_cell(row.snapshot, "value") }}</td>
           <td><span class="movement increase">+{{ "%.2f"|format(row.history[comparison_label].delta_value) }}</span></td>
           <td>{{ row.history[comparison_label].delta_rank if row.history[comparison_label].delta_rank is not none else "—" }}</td>
         </tr>
@@ -126,7 +126,7 @@
       {% for row in top_fallers %}
         <tr>
           <td><a href="/players/{{ row.player.id }}">{{ row.player.full_name }}</a><small>{{ row.team.short_name }}</small></td>
-          <td>{{ "%.2f"|format(row.snapshot.value) }}</td>
+          <td>{{ metric_cell(row.snapshot, "value") }}</td>
           <td><span class="movement decrease">{{ "%.2f"|format(row.history[comparison_label].delta_value) }}</span></td>
           <td>{{ row.history[comparison_label].delta_rank if row.history[comparison_label].delta_rank is not none else "—" }}</td>
         </tr>

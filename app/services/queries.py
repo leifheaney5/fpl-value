@@ -9,6 +9,28 @@ from sqlalchemy.orm import Session
 from app.db.models import Player, PlayerSnapshot, RefreshRun, SchemaChange, Team
 
 
+def _sort_key(value: Any, descending: bool) -> tuple[int, float]:
+    """Order a possibly-null metric.
+
+    Unavailable values sort last in either direction rather than being coerced
+    to zero, which would rank a player we know nothing about alongside one we
+    know scores nothing.
+    """
+    if value is None:
+        return (1, 0.0)
+    return (0, -float(value) if descending else float(value))
+
+
+def _at_least(value: Any, threshold: float) -> bool:
+    """A null metric never satisfies a minimum filter."""
+    return value is not None and float(value) >= threshold
+
+
+def _at_most(value: Any, threshold: float) -> bool:
+    """A null metric never satisfies a maximum filter."""
+    return value is not None and float(value) <= threshold
+
+
 def latest_snapshot_time(db: Session):
     return db.scalar(select(func.max(PlayerSnapshot.captured_at)))
 
@@ -48,6 +70,21 @@ def _historical_map(
     return {snapshot.player_id: snapshot for snapshot in snapshots}
 
 
+class CrossSeasonError(ValueError):
+    """Raised when a calculation would mix observations from different seasons.
+
+    A previous-season snapshot differenced against a current-season one produces
+    a number that looks like movement but measures a season rollover.
+    """
+
+
+def _delta(current: Any, previous: Any, digits: int) -> float | None:
+    """Difference two possibly-null metrics; null in, null out."""
+    if current is None or previous is None:
+        return None
+    return round(current - previous, digits)
+
+
 def _history_comparison(
     current: PlayerSnapshot,
     previous: PlayerSnapshot | None,
@@ -66,9 +103,18 @@ def _history_comparison(
             "delta_rank": None,
         }
 
-    delta_value = round(current.value - previous.value, 3)
-    delta_price = round(current.price - previous.price, 1)
-    delta_ownership = round(current.ownership - previous.ownership, 2)
+    current_season = getattr(current, "season", None)
+    previous_season = getattr(previous, "season", None)
+    if current_season and previous_season and current_season != previous_season:
+        raise CrossSeasonError(
+            f"Refusing to compare a {previous_season} snapshot against "
+            f"{current_season}: the difference would measure a season rollover, "
+            "not player movement."
+        )
+
+    delta_value = _delta(current.value, previous.value, 3)
+    delta_price = _delta(current.price, previous.price, 1)
+    delta_ownership = _delta(current.ownership, previous.ownership, 2)
     delta_rank = (
         previous.value_rank - current.value_rank
         if previous.value_rank is not None
@@ -157,13 +203,7 @@ def filtered_players(
             if row["snapshot"].price <= max_price
         ]
     if max_rotation is not None:
-        rows = [
-            row for row in rows
-            if (
-                row["snapshot"].rotation_risk is not None
-                and row["snapshot"].rotation_risk <= max_rotation
-            )
-        ]
+        rows = [row for row in rows if _at_most(row["snapshot"].rotation_risk, max_rotation)]
     if min_minutes is not None:
         rows = [
             row for row in rows
@@ -172,11 +212,11 @@ def filtered_players(
     if min_starts is not None:
         rows = [row for row in rows if row["snapshot"].starts >= min_starts]
     if min_start_rate is not None:
-        rows = [row for row in rows if row["snapshot"].start_rate >= min_start_rate]
+        rows = [row for row in rows if _at_least(row["snapshot"].start_rate, min_start_rate)]
     if min_reliable_value is not None:
-        rows = [row for row in rows if row["snapshot"].reliable_value >= min_reliable_value]
+        rows = [row for row in rows if _at_least(row["snapshot"].reliable_value, min_reliable_value)]
     if min_forward_value is not None:
-        rows = [row for row in rows if row["snapshot"].forward_value >= min_forward_value]
+        rows = [row for row in rows if _at_least(row["snapshot"].forward_value, min_forward_value)]
     if max_ownership is not None:
         rows = [row for row in rows if row["snapshot"].ownership <= max_ownership]
     if status:
@@ -208,14 +248,9 @@ def filtered_players(
         rows.sort(key=lambda row: row["history"].get(movement_period, {}).get(history_key) or 0, reverse=True)
         return rows
     key = allowed.get(sort, "reliable_value")
-    reverse = key != "rotation_risk"
-    rows.sort(
-        key=lambda row: (
-            getattr(row["snapshot"], key) is not None,
-            getattr(row["snapshot"], key) or 0,
-        ),
-        reverse=reverse,
-    )
+    # Rotation risk is the one metric where lower is better.
+    descending = key != "rotation_risk"
+    rows.sort(key=lambda row: _sort_key(getattr(row["snapshot"], key), descending))
     return rows
 
 
@@ -250,21 +285,77 @@ def recent_schema_changes(db: Session, limit: int = 50):
     ).all()
 
 
-def movers_data(db: Session, period: str = "7D") -> dict[str, list[dict[str, Any]]]:
+# A delta must clear its threshold to count as movement. Without this, players
+# whose value did not change at all appeared in both the risers and the fallers.
+MOVEMENT_THRESHOLDS = {
+    "value": 0.01,
+    "price": 0.05,
+    "ownership": 0.10,
+    "rank": 1.0,
+}
+MOVEMENT_FIELDS = {
+    "value": "delta_value",
+    "price": "delta_price",
+    "ownership": "delta_ownership",
+    "rank": "delta_rank",
+}
+
+
+def classify_movement(delta: float | None, threshold: float) -> str:
+    """Classify a delta as movement in one direction, or as no movement at all.
+
+    ``riser`` and ``faller`` are mutually exclusive by construction, and neither
+    can contain an unchanged player.
+    """
+    if delta is None:
+        return "no_history"
+    if delta > threshold:
+        return "riser"
+    if delta < -threshold:
+        return "faller"
+    return "unchanged"
+
+
+def movers_data(
+    db: Session,
+    period: str = "7D",
+    thresholds: dict[str, float] | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
     if period not in {"1D", "7D", "30D"}:
         period = "7D"
+    thresholds = {**MOVEMENT_THRESHOLDS, **(thresholds or {})}
     rows = latest_rows(db)
-    fields = {
-        "value": "delta_value",
-        "price": "delta_price",
-        "ownership": "delta_ownership",
-        "rank": "delta_rank",
-    }
-    result: dict[str, list[dict[str, Any]]] = {}
-    for label, field in fields.items():
-        comparable = [row for row in rows if row["history"][period].get(field) is not None]
-        result[f"{label}_risers"] = sorted(comparable, key=lambda row: row["history"][period][field], reverse=True)[:20]
-        result[f"{label}_fallers"] = sorted(comparable, key=lambda row: row["history"][period][field])[:20]
+
+    result: dict[str, Any] = {}
+    for label, field in MOVEMENT_FIELDS.items():
+        threshold = thresholds[label]
+        risers: list[dict[str, Any]] = []
+        fallers: list[dict[str, Any]] = []
+        observed = 0
+        for row in rows:
+            delta = row["history"][period].get(field)
+            classification = classify_movement(delta, threshold)
+            if classification == "no_history":
+                continue
+            observed += 1
+            if classification == "riser":
+                risers.append(row)
+            elif classification == "faller":
+                fallers.append(row)
+
+        risers.sort(key=lambda row: row["history"][period][field], reverse=True)
+        fallers.sort(key=lambda row: row["history"][period][field])
+        result[f"{label}_risers"] = risers[:limit]
+        result[f"{label}_fallers"] = fallers[:limit]
+        result[f"{label}_window"] = {
+            "period": period,
+            "threshold": threshold,
+            "observations": observed,
+            "risers": len(risers),
+            "fallers": len(fallers),
+            "unchanged": observed - len(risers) - len(fallers),
+        }
     return result
 
 
@@ -283,13 +374,15 @@ def dashboard_data(db: Session) -> dict[str, Any]:
     rows = latest_rows(db)
     snapshots = [row["snapshot"] for row in rows]
 
+    # Only players with a value can be ranked. Padding these lists with
+    # unavailable players would present them as the best available.
     by_reliable = sorted(
-        rows,
+        [row for row in rows if row["snapshot"].reliable_value is not None],
         key=lambda row: row["snapshot"].reliable_value,
         reverse=True,
     )
     by_forward = sorted(
-        rows,
+        [row for row in rows if row["snapshot"].forward_value is not None],
         key=lambda row: row["snapshot"].forward_value,
         reverse=True,
     )
@@ -303,6 +396,8 @@ def dashboard_data(db: Session) -> dict[str, Any]:
 
     positions: dict[str, list[float]] = {}
     for row in rows:
+        if row["snapshot"].reliable_value is None:
+            continue
         positions.setdefault(
             row["player"].position_short, []
         ).append(row["snapshot"].reliable_value)

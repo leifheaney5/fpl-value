@@ -65,9 +65,14 @@ def reliability_factor(
     starts: int,
     team_matches: int,
     sample_minutes: int = 900,
-) -> float:
+) -> float | None:
+    """Return None when the team has played no matches.
+
+    Returning 0.0 here would claim the player is maximally unreliable, which is
+    a measurement the data does not support before a ball is kicked.
+    """
     if team_matches <= 0:
-        return 0.0
+        return None
     minute_share = clamp(minutes / (team_matches * 90.0), 0.0, 1.0)
     start_share = clamp(starts / team_matches, 0.0, 1.0)
     sample_factor = clamp(minutes / max(1, sample_minutes), 0.0, 1.0)
@@ -162,10 +167,16 @@ def expected_minutes(
     minutes: int,
     starts: int,
     team_matches: int,
-    availability: float,
-) -> float:
-    if team_matches <= 0:
-        return 0.0
+    availability: float | None,
+) -> float | None:
+    """Observed expected minutes for the current season.
+
+    Returns None before the season starts. Estimating preseason minutes needs a
+    different model built on previous-season inputs; pretending the answer is
+    zero would rank every player as a non-starter.
+    """
+    if team_matches <= 0 or availability is None:
+        return None
     average_minutes = clamp(minutes / team_matches, 0.0, 90.0)
     start_share = clamp(starts / team_matches, 0.0, 1.0)
     blended = 0.65 * average_minutes + 0.35 * (90.0 * start_share)
@@ -176,23 +187,29 @@ def project_next_fixtures(
     *,
     form: float,
     points_per_game: float,
-    points_per_90: float,
-    expected_minutes_value: float,
-    availability: float,
+    points_per_90: float | None,
+    expected_minutes_value: float | None,
+    availability: float | None,
     fixtures: list[dict[str, Any]],
     form_weight: float = 0.40,
     ppg_weight: float = 0.35,
     p90_weight: float = 0.25,
     difficulty_weight: float = 0.08,
     home_advantage_factor: float = 0.03,
-) -> float:
-    if not fixtures:
-        return 0.0
+) -> float | None:
+    """Return None when the projection has no basis.
+
+    A projection needs both a fixture list and an expected-minutes estimate. With
+    either missing there is nothing to project, and 0.0 would read as a confident
+    forecast of a blank.
+    """
+    if not fixtures or expected_minutes_value is None or availability is None:
+        return None
 
     baseline = (
         form_weight * max(0.0, form)
         + ppg_weight * max(0.0, points_per_game)
-        + p90_weight * max(0.0, points_per_90)
+        + p90_weight * max(0.0, points_per_90 or 0.0)
     )
     minute_factor = expected_minutes_value / 90.0
     total = 0.0
@@ -218,8 +235,26 @@ def assign_global_ranks(
     rank_key: str,
     percentile_key: str,
     tier_key: str,
-) -> None:
-    ranked = [row for row in rows if safe_float(row.get(metric)) > 0]
+) -> dict[str, int]:
+    """Rank rows on a metric and report why the rest were left out.
+
+    Returns a count of exclusions by reason so the interface can explain the gap
+    between "players tracked" and "players ranked" instead of showing two
+    numbers that do not add up.
+    """
+    exclusions: dict[str, int] = {}
+    ranked: list[dict[str, Any]] = []
+    for row in rows:
+        raw = row.get(metric)
+        if raw is None:
+            reason = "Metric not available yet"
+        elif safe_float(raw) <= 0:
+            reason = "No positive score to rank"
+        else:
+            ranked.append(row)
+            continue
+        exclusions[reason] = exclusions.get(reason, 0) + 1
+
     ranked.sort(
         key=lambda row: (
             -safe_float(row.get(metric)),
@@ -232,6 +267,7 @@ def assign_global_ranks(
         row[rank_key] = rank
         row[percentile_key] = percentile(rank, count)
         row[tier_key] = cumulative_tier(rank, count)
+    return exclusions
 
 
 def assign_position_ranks(
@@ -243,7 +279,8 @@ def assign_position_ranks(
 ) -> None:
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
-        if safe_float(row.get(metric)) > 0:
+        raw = row.get(metric)
+        if raw is not None and safe_float(raw) > 0:
             groups[str(row.get("position_short"))].append(row)
 
     for group in groups.values():

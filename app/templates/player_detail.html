@@ -24,12 +24,12 @@
 </section>
 
 <section class="cards six">
-  <article class="stat"><span>Raw value</span><strong>{{ "%.2f"|format(current.value) }}</strong></article>
-  <article class="stat"><span>Reliable value</span><strong>{{ "%.2f"|format(current.reliable_value) }}</strong></article>
-  <article class="stat"><span>Forward value</span><strong>{{ "%.2f"|format(current.forward_value) }}</strong></article>
+  <article class="stat"><span>Raw value</span><strong>{{ metric_cell(current, "value") }}</strong></article>
+  <article class="stat"><span>Reliable value</span><strong>{{ metric_cell(current, "reliable_value") }}</strong></article>
+  <article class="stat"><span>Forward value</span><strong>{{ metric_cell(current, "forward_value") }}</strong></article>
   <article class="stat"><span>Rotation risk</span><strong>{{ current.rotation_risk or "—" }}</strong></article>
-  <article class="stat"><span>Points / 90</span><strong>{{ "%.2f"|format(current.points_per_90) }}</strong></article>
-  <article class="stat"><span>Start rate</span><strong>{{ "%.0f"|format(current.start_rate) }}%</strong></article>
+  <article class="stat"><span>Points / 90</span><strong>{{ metric_cell(current, "points_per_90") }}</strong></article>
+  <article class="stat"><span>Start rate</span><strong>{{ metric_cell(current, "start_rate") }}%</strong></article>
 </section>
 
 <section class="panel chart-panel large-chart">
@@ -45,13 +45,13 @@
       <div><dt>Starts</dt><dd>{{ current.starts }}</dd></div>
       <div><dt>Team matches</dt><dd>{{ current.team_matches }}</dd></div>
       <div><dt>Expected minutes</dt><dd>{{ current.expected_minutes }}</dd></div>
-      <div><dt>Reliability</dt><dd>{{ "%.2f"|format(current.reliability_factor) }}</dd></div>
+      <div><dt>Reliability</dt><dd>{{ metric_cell(current, "reliability_factor") }}</dd></div>
       <div><dt>Risk confidence</dt><dd>{{ current.rotation_confidence }}</dd></div>
     </dl>
   </article>
   <article class="panel">
     <h2>Upcoming fixtures</h2>
-    <dl class="metrics"><div><dt>Availability</dt><dd>{{ current.availability_status }} · {{ "%.0f"|format(current.availability_factor * 100) }}%</dd></div><div><dt>Chance next round</dt><dd>{{ "%.0f"|format(current.chance_of_playing) if current.chance_of_playing is not none else "Not supplied" }}</dd></div><div><dt>Fixture difficulty</dt><dd>{{ "%.1f"|format(current.average_fixture_difficulty) if current.average_fixture_difficulty else "—" }}</dd></div><div><dt>Projection inputs</dt><dd>Form {{ current.form }} · PPG {{ current.points_per_game }} · P/90 {{ "%.2f"|format(current.points_per_90) }}</dd></div></dl>
+    <dl class="metrics"><div><dt>Availability</dt><dd>{{ current.availability_status }} · {{ "%.0f"|format(current.availability_factor * 100) }}%</dd></div><div><dt>Chance next round</dt><dd>{{ "%.0f"|format(current.chance_of_playing) if current.chance_of_playing is not none else "Not supplied" }}</dd></div><div><dt>Fixture difficulty</dt><dd>{{ metric_cell(current, "average_fixture_difficulty") if current.average_fixture_difficulty else "—" }}</dd></div><div><dt>Projection inputs</dt><dd>Form {{ current.form }} · PPG {{ current.points_per_game }} · P/90 {{ metric_cell(current, "points_per_90") }}</dd></div></dl>
     <div class="fixtures">
     {% for fixture in current.upcoming_fixtures %}
       <span>GW{{ fixture.event }} · {{ fixture.opponent }} {{ "(H)" if fixture.is_home else "(A)" }} · FDR {{ fixture.difficulty }}</span>

@@ -9,6 +9,7 @@ import logging
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from app.analytics.contracts import CONTRACTS, MetricStatus
 from app.analytics.metrics import (
     assign_global_ranks,
     assign_position_ranks,
@@ -24,6 +25,7 @@ from app.api.fpl_client import FPLClient
 from app.config import Settings
 from app.db.models import (
     Fixture,
+    Gameweek,
     GameweekHistory,
     Player,
     PlayerSnapshot,
@@ -140,6 +142,36 @@ def _update_schema(
             change_count += 1
 
     return change_count
+
+
+def _status(
+    value: float | None,
+    metric: str,
+    reason_when_null: str,
+    has_sample: bool,
+) -> dict[str, str]:
+    """Record why a metric holds its value.
+
+    A stored 0.0 is only a measurement when there was something to measure;
+    otherwise it is an absence that happens to look like a number.
+    """
+    if value is None:
+        contract = CONTRACTS.get(metric)
+        return {
+            "status": MetricStatus.NOT_YET_AVAILABLE,
+            "reason": reason_when_null
+            or (contract.null_behaviour if contract else "Inputs unavailable"),
+        }
+    if value == 0.0:
+        return {
+            "status": MetricStatus.REAL_ZERO if has_sample else MetricStatus.MISSING,
+            "reason": "Measured as zero" if has_sample else reason_when_null,
+        }
+    return {"status": MetricStatus.VALUE, "reason": ""}
+
+
+def _round(value: float | None, digits: int) -> float | None:
+    return None if value is None else round(value, digits)
 
 
 def _previous_snapshot(
@@ -315,6 +347,42 @@ def refresh_data(
                     }
                 )
 
+        # Persist the season calendar. These records were previously parsed only
+        # for schema detection and discarded, leaving the application unable to
+        # name the current gameweek or the next deadline.
+        for item in bootstrap.get("events", []):
+            if not isinstance(item, dict):
+                continue
+            number = safe_int(item.get("id"))
+            if number <= 0:
+                continue
+            gameweek = db.scalar(
+                select(Gameweek).where(
+                    Gameweek.season == settings.current_season,
+                    Gameweek.number == number,
+                )
+            )
+            values = {
+                "name": str(item.get("name") or f"Gameweek {number}"),
+                "deadline_time": _parse_datetime(item.get("deadline_time")),
+                "finished": bool(item.get("finished")),
+                "data_checked": bool(item.get("data_checked")),
+                "is_current": bool(item.get("is_current")),
+                "is_next": bool(item.get("is_next")),
+                "raw": item,
+            }
+            if gameweek is None:
+                db.add(
+                    Gameweek(
+                        season=settings.current_season, number=number, **values
+                    )
+                )
+            else:
+                for key, value in values.items():
+                    setattr(gameweek, key, value)
+
+        db.flush()
+
         players_payload = [
             item for item in bootstrap.get("elements", [])
             if isinstance(item, dict)
@@ -368,19 +436,32 @@ def refresh_data(
             starts = safe_int(item.get("starts"))
             matches = team_matches.get(team_id, 0)
 
-            value = points / price if price > 0 and points > 0 else 0.0
-            p90 = points * 90.0 / minutes if minutes > 0 else 0.0
-            ppm = points / minutes if minutes > 0 else 0.0
-            pps = points / starts if starts > 0 else 0.0
-            pptm = points / matches if matches > 0 else 0.0
-            start_rate = 100.0 * starts / matches if matches > 0 else 0.0
-            mptm = minutes / matches if matches > 0 else 0.0
-            value_p90 = p90 / price if price > 0 else 0.0
+            has_matches = matches > 0
+            has_minutes = minutes > 0
+            no_matches_reason = "No matches played yet this season"
+            no_minutes_reason = "No minutes played yet this season"
+
+            # Points per million is a rate, and before any match is played there
+            # is no opportunity in the denominator. Every player would score
+            # exactly 0.00 and be ranked on it, which reads as "poor value"
+            # rather than "the season has not started".
+            value = points / price if price > 0 and has_matches else None
+            p90 = points * 90.0 / minutes if has_minutes else None
+            ppm = points / minutes if has_minutes else None
+            pps = points / starts if starts > 0 else None
+            pptm = points / matches if has_matches else None
+            start_rate = 100.0 * starts / matches if has_matches else None
+            mptm = minutes / matches if has_matches else None
+            value_p90 = p90 / price if p90 is not None and price > 0 else None
 
             reliable_factor = reliability_factor(
                 minutes, starts, matches, settings.reliability_sample_minutes
             )
-            reliable_value = value * reliable_factor
+            reliable_value = (
+                value * reliable_factor
+                if value is not None and reliable_factor is not None
+                else None
+            )
 
             old = _previous_snapshot(db, player_id, captured_at)
             old_data = (
@@ -418,7 +499,7 @@ def refresh_data(
             )[: settings.forward_fixture_count]
             average_difficulty = (
                 round(sum(safe_float(item.get("difficulty"), 3.0) for item in next_fixtures) / len(next_fixtures), 2)
-                if next_fixtures else 0.0
+                if next_fixtures else None
             )
             form = safe_float(item.get("form"))
             ppg = safe_float(item.get("points_per_game"))
@@ -436,7 +517,7 @@ def refresh_data(
                 home_advantage_factor=settings.home_advantage_factor,
             )
             forward_value = (
-                projected / price if price > 0 else 0.0
+                projected / price if projected is not None and price > 0 else None
             )
 
             computed.append(
@@ -457,14 +538,14 @@ def refresh_data(
                     "bps": safe_int(item.get("bps")),
                     "form": form,
                     "points_per_game": ppg,
-                    "points_per_minute": round(ppm, 6),
-                    "points_per_90": round(p90, 3),
-                    "points_per_start": round(pps, 3),
-                    "points_per_team_match": round(pptm, 3),
-                    "value_per_90": round(value_p90, 3),
-                    "start_rate": round(start_rate, 1),
-                    "minutes_per_team_match": round(mptm, 2),
-                    "average_minutes_per_start": round(minutes / starts, 2) if starts > 0 else 0.0,
+                    "points_per_minute": _round(ppm, 6),
+                    "points_per_90": _round(p90, 3),
+                    "points_per_start": _round(pps, 3),
+                    "points_per_team_match": _round(pptm, 3),
+                    "value_per_90": _round(value_p90, 3),
+                    "start_rate": _round(start_rate, 1),
+                    "minutes_per_team_match": _round(mptm, 2),
+                    "average_minutes_per_start": round(minutes / starts, 2) if starts > 0 else None,
                     "expected_goals": safe_float(
                         item.get("expected_goals")
                     ),
@@ -478,9 +559,9 @@ def refresh_data(
                     "ownership": safe_float(
                         item.get("selected_by_percent")
                     ),
-                    "value": round(value, 3),
+                    "value": _round(value, 3),
                     "reliability_factor": reliable_factor,
-                    "reliable_value": round(reliable_value, 3),
+                    "reliable_value": _round(reliable_value, 3),
                     "rotation_risk": risk,
                     "rotation_tier": risk_tier,
                     "rotation_confidence": risk_confidence,
@@ -495,8 +576,42 @@ def refresh_data(
                     "projected_points_5": projected,
                     "upcoming_fixture_count": len(next_fixtures),
                     "average_fixture_difficulty": average_difficulty,
-                    "forward_value": round(forward_value, 3),
+                    "forward_value": _round(forward_value, 3),
                     "upcoming_fixtures": next_fixtures,
+                    "season": settings.current_season,
+                    "metric_status": {
+                        "value": _status(value, "value", no_matches_reason, has_matches),
+                        "reliability_factor": _status(
+                            reliable_factor, "reliability_factor", no_matches_reason, has_matches
+                        ),
+                        "reliable_value": _status(
+                            reliable_value, "reliable_value", no_matches_reason, has_matches
+                        ),
+                        "start_rate": _status(
+                            start_rate, "start_rate", no_matches_reason, has_matches
+                        ),
+                        "points_per_90": _status(
+                            p90, "points_per_90", no_minutes_reason, has_minutes
+                        ),
+                        "expected_minutes": _status(
+                            exp_minutes, "expected_minutes", no_matches_reason, has_matches
+                        ),
+                        "projected_points_5": _status(
+                            projected,
+                            "projected_points_5",
+                            "No upcoming fixtures or no expected-minutes estimate",
+                            bool(next_fixtures) and exp_minutes is not None,
+                        ),
+                        "forward_value": _status(
+                            forward_value,
+                            "forward_value",
+                            "No projection available",
+                            bool(next_fixtures) and exp_minutes is not None,
+                        ),
+                        "rotation_risk": _status(
+                            risk, "rotation_risk", no_matches_reason, has_matches
+                        ),
+                    },
                     "raw": item,
                 }
             )
@@ -536,7 +651,7 @@ def refresh_data(
                         for key, value in values.items():
                             setattr(existing, key, value)
 
-        assign_global_ranks(
+        value_exclusions = assign_global_ranks(
             computed,
             "value",
             "value_rank",
@@ -593,6 +708,11 @@ def refresh_data(
         run.details = {
             "captured_at": captured_at.isoformat(),
             "fixture_count": len(fixtures_payload),
+            "season": settings.current_season,
+            "ranked_count": sum(
+                1 for row in computed if row.get("value_rank") is not None
+            ),
+            "ranking_exclusions": value_exclusions,
         }
         db.commit()
         db.refresh(run)

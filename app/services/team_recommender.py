@@ -28,23 +28,120 @@ _RECOMMENDATION_CACHE_LOCK = RLock()
 _MAX_CACHE_ENTRIES = 24
 
 
-def _projected_output(row: dict[str, Any]) -> float:
+class NotReadyError(ValueError):
+    """The inputs cannot support a recommendation.
+
+    Raised instead of returning a squad built from data that cannot distinguish
+    one player from another.
+    """
+
+    def __init__(self, checks: list[dict[str, Any]], activates_when: str):
+        self.checks = checks
+        self.activates_when = activates_when
+        failed = "; ".join(
+            check["detail"] for check in checks if not check["passed"]
+        )
+        super().__init__(f"Recommendations are not available: {failed}")
+
+
+# A squad is fifteen players, so fewer than fifteen projections cannot fill one.
+# The share requirement stops the optimiser choosing from a sliver of the market
+# while the rest of the pool is unprojectable.
+MIN_PROJECTED_PLAYERS = 15
+MIN_PROJECTED_SHARE = 0.25
+MIN_OBJECTIVE_STDEV = 0.05
+
+
+def _projected_output(row: dict[str, Any]) -> float | None:
+    """Projected output over the forward window, or None when unknowable.
+
+    Returning 0.0 for an unprojectable player used to make every player look
+    identical in preseason, which handed the squad choice to an arbitrary
+    tie-breaker.
+    """
     snapshot = row["snapshot"]
-    projected = float(getattr(snapshot, "projected_points_5", 0) or 0)
-    if projected <= 0:
-        projected = float(getattr(snapshot, "points_per_game", 0) or 0) * 5
-    expected_minutes = float(getattr(snapshot, "expected_minutes", 0) or 0)
-    minutes_factor = min(expected_minutes / 450, 1.0) if expected_minutes else 1.0
-    availability = float(getattr(snapshot, "availability_factor", 0) or 0)
-    if availability <= 0:
+    projected = getattr(snapshot, "projected_points_5", None)
+    if projected is None:
+        points_per_game = getattr(snapshot, "points_per_game", None)
+        projected = None if not points_per_game else float(points_per_game) * 5
+    if projected is None:
+        return None
+
+    availability = getattr(snapshot, "availability_factor", None)
+    if availability is None or availability <= 0:
         return 0.0
-    return projected * (.70 + (.30 * minutes_factor)) * availability
+
+    expected_minutes = getattr(snapshot, "expected_minutes", None)
+    minutes_factor = (
+        min(float(expected_minutes) / 450, 1.0) if expected_minutes else 1.0
+    )
+    return float(projected) * (.70 + (.30 * minutes_factor)) * float(availability)
+
+
+def _output_or_zero(row: dict[str, Any]) -> float:
+    """Projected output for arithmetic that must produce a number."""
+    value = _projected_output(row)
+    return 0.0 if value is None else value
+
+
+def validate_pool(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Check that the inputs can actually distinguish one squad from another."""
+    projections = [
+        value for value in (_projected_output(row) for row in rows) if value is not None
+    ]
+    positive = [value for value in projections if value > 0]
+    if projections:
+        mean = sum(projections) / len(projections)
+        variance = sum((value - mean) ** 2 for value in projections) / len(projections)
+        stdev = variance ** 0.5
+    else:
+        stdev = 0.0
+
+    by_position = Counter(row["player"].position_short for row in rows)
+    return [
+        {
+            "name": "player_pool",
+            "passed": len(rows) >= 15,
+            "detail": f"{len(rows)} players available, at least 15 required",
+        },
+        {
+            "name": "position_pools",
+            "passed": all(
+                by_position.get(position, 0) >= count
+                for position, count in POSITION_COUNTS.items()
+            ),
+            "detail": (
+                "Each position needs enough players to fill its squad slots "
+                f"(have {dict(by_position)}, need {POSITION_COUNTS})"
+            ),
+        },
+        {
+            "name": "projections_available",
+            "passed": (
+                len(positive) >= MIN_PROJECTED_PLAYERS
+                and (not rows or len(positive) / len(rows) >= MIN_PROJECTED_SHARE)
+            ),
+            "detail": (
+                f"{len(positive)} of {len(rows)} players have a positive "
+                f"projection; at least {MIN_PROJECTED_PLAYERS} and "
+                f"{MIN_PROJECTED_SHARE:.0%} of the pool are required"
+            ),
+        },
+        {
+            "name": "objective_variation",
+            "passed": stdev > MIN_OBJECTIVE_STDEV,
+            "detail": (
+                f"Projection spread is {stdev:.3f}; below {MIN_OBJECTIVE_STDEV} "
+                "the objective cannot tell one squad from another"
+            ),
+        },
+    ]
 
 
 def _score(row: dict[str, Any], strategy: str = "best_team") -> float:
     weights = STRATEGIES.get(strategy, STRATEGIES["best_team"])
     snapshot = row["snapshot"]
-    projected = _projected_output(row)
+    projected = _output_or_zero(row)
     raw_efficiency = float(snapshot.total_points or 0) / max(float(snapshot.price or 1), 1)
     reliable = float(snapshot.reliable_value or 0)
     forward = float(snapshot.forward_value or 0)
@@ -67,7 +164,7 @@ def _best_lineup(selected: list[dict[str, Any]], strategy: str) -> tuple[str | N
     by_position = {
         position: sorted(
             [row for row in selected if row["player"].position_short == position],
-            key=lambda row: _projected_output(row),
+            key=lambda row: _output_or_zero(row),
             reverse=True,
         )
         for position in POSITION_COUNTS
@@ -79,8 +176,8 @@ def _best_lineup(selected: list[dict[str, Any]], strategy: str) -> tuple[str | N
         starting = by_position["GKP"][:1] + by_position["DEF"][:shape["DEF"]] + by_position["MID"][:shape["MID"]] + by_position["FWD"][:shape["FWD"]]
         if len(starting) != 11:
             continue
-        captain = max(starting, key=_projected_output)
-        score = sum(_projected_output(row) for row in starting) + _projected_output(captain)
+        captain = max(starting, key=_output_or_zero)
+        score = sum(_output_or_zero(row) for row in starting) + _output_or_zero(captain)
         if strategy in {"safe", "best_team"}:
             score += sum(_score(row, strategy) for row in starting) * .05
         if score > best_score:
@@ -108,7 +205,7 @@ def _find_feasible_squad(rows: list[dict[str, Any]], budget_units: int) -> list[
     by_position = {
         position: sorted(
             [row for row in rows if row["player"].position_short == position and float(row["snapshot"].price or 0) > 0],
-            key=lambda row: (float(row["snapshot"].price), -_projected_output(row)),
+            key=lambda row: (float(row["snapshot"].price), -_output_or_zero(row)),
         )
         for position in POSITION_COUNTS
     }
@@ -144,10 +241,95 @@ def _find_feasible_squad(rows: list[dict[str, Any]], budget_units: int) -> list[
     return visit(0, 0, [], Counter())
 
 
+def _best_excluded(
+    rows: list[dict[str, Any]],
+    selected: list[dict[str, Any]],
+    remaining: float,
+    strategy: str,
+) -> tuple[dict[str, Any] | None, float | None]:
+    """The strongest affordable player left out, and what picking them would add.
+
+    Answers "why is money still in the bank?" with a named alternative rather
+    than leaving the reader to guess.
+    """
+    selected_ids = {row["player"].id for row in selected}
+    weakest_by_position: dict[str, dict[str, Any]] = {}
+    for row in selected:
+        position = row["player"].position_short
+        current = weakest_by_position.get(position)
+        if current is None or _output_or_zero(row) < _output_or_zero(current):
+            weakest_by_position[position] = row
+
+    best: dict[str, Any] | None = None
+    best_gain: float | None = None
+    for row in rows:
+        if row["player"].id in selected_ids:
+            continue
+        position = row["player"].position_short
+        incumbent = weakest_by_position.get(position)
+        if incumbent is None:
+            continue
+        # Affordable means the price difference fits in the remaining bank.
+        extra_cost = float(row["snapshot"].price) - float(incumbent["snapshot"].price)
+        if extra_cost > remaining:
+            continue
+        gain = _output_or_zero(row) - _output_or_zero(incumbent)
+        if gain <= 0:
+            continue
+        if best_gain is None or gain > best_gain:
+            best, best_gain = row, gain
+
+    if best is None:
+        return None, None
+    return (
+        {
+            "player": best["player"],
+            "team": best["team"],
+            "snapshot": best["snapshot"],
+            "score": _score(best, strategy),
+        },
+        round(best_gain, 2),
+    )
+
+
+def _budget_explanation(
+    remaining: float,
+    best_excluded: dict[str, Any] | None,
+    marginal_gain: float | None,
+) -> str:
+    if remaining <= 0.05:
+        return "The full budget is committed to the squad."
+    if best_excluded is None:
+        return (
+            f"£{remaining:.1f}m remains because no affordable upgrade improved "
+            "projected output; every candidate that fits the bank scored at or "
+            "below the player already selected in that position."
+        )
+    name = best_excluded["player"].full_name
+    return (
+        f"£{remaining:.1f}m remains. The closest affordable upgrade is {name} "
+        f"at £{best_excluded['snapshot'].price:.1f}m, worth about "
+        f"{marginal_gain:+.2f} projected points, which did not beat the "
+        "selected squad on the leading criteria."
+    )
+
+
 def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: str = "best_team") -> dict[str, Any]:
     """Build an explainable highest-projected-output FPL squad under real squad rules."""
     if not rows:
         raise ValueError("No player data is available for recommendations.")
+
+    # Refuse before optimising. A squad built from indistinguishable inputs is
+    # worse than no squad, because it looks like a recommendation.
+    checks = validate_pool(rows)
+    if not all(check["passed"] for check in checks):
+        raise NotReadyError(
+            checks,
+            "Recommendations activate once the season has started and player "
+            "projections differ from one another. Until then the optimiser has "
+            "nothing to optimise.",
+        )
+
     strategy = strategy if strategy in STRATEGIES else "best_team"
     candidates = {position: _candidates(rows, position, strategy) for position in POSITION_COUNTS}
     if any(len(items) < count for position, count in POSITION_COUNTS.items() for items in [candidates[position]]):
@@ -157,54 +339,109 @@ def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: 
     feasible = _find_feasible_squad(rows, budget_units)
     if feasible is None:
         raise ValueError("No valid squad fits the selected budget and club limits.")
+
+    # Expand the squad one slot at a time, and for every slot know the cheapest
+    # possible cost of filling all the slots that come after it. Without this
+    # reservation the search spends freely on early positions, reaches the last
+    # position with nothing left, finds no legal continuation, and falls back to
+    # the cheapest feasible squad -- which is how a full-budget request returned
+    # a minimal team with most of the money unspent.
+    slots = [
+        position
+        for position, count in POSITION_COUNTS.items()
+        for _ in range(count)
+    ]
+    cheapest_units = {
+        position: sorted(
+            int(round(float(row["snapshot"].price) * 10)) for row in items
+        )
+        for position, items in candidates.items()
+    }
+    reserved_after: list[int] = []
+    for index in range(len(slots)):
+        remaining = Counter(slots[index + 1:])
+        reserved_after.append(
+            sum(
+                sum(cheapest_units[position][:needed])
+                for position, needed in remaining.items()
+            )
+        )
+
     states = [(0, 0.0, [], Counter())]
     beam_failed = False
     score_by_id = {row["player"].id: _score(row, strategy) for items in candidates.values() for row in items}
-    for position, count in POSITION_COUNTS.items():
-        for _ in range(count):
-            next_states = []
-            for spent, score, selected, clubs in states:
-                selected_ids = {row["player"].id for row in selected}
-                for row in candidates[position]:
-                    player = row["player"]
-                    if player.id in selected_ids:
-                        continue
-                    price_units = int(round(float(row["snapshot"].price) * 10))
-                    club_id = row["team"].id
-                    if spent + price_units > budget_units or clubs[club_id] >= 3:
-                        continue
-                    updated_clubs = clubs.copy()
-                    updated_clubs[club_id] += 1
-                    next_states.append((spent + price_units, score + score_by_id[player.id], selected + [row], updated_clubs))
-            next_states.sort(key=lambda state: (state[1], -state[0]), reverse=True)
-            retained = next_states[:600]
-            diverse = sorted(next_states, key=lambda state: (len(state[3]), state[1], -state[0]), reverse=True)[:250]
-            by_ids = {tuple(row["player"].id for row in state[2]): state for state in retained}
-            by_ids.update({tuple(row["player"].id for row in state[2]): state for state in diverse})
-            states = list(by_ids.values())[:850]
-            if not states:
-                beam_failed = True
-                break
-        if beam_failed:
+    for index, position in enumerate(slots):
+        reserve = reserved_after[index]
+        next_states = []
+        for spent, score, selected, clubs in states:
+            selected_ids = {row["player"].id for row in selected}
+            for row in candidates[position]:
+                player = row["player"]
+                if player.id in selected_ids:
+                    continue
+                price_units = int(round(float(row["snapshot"].price) * 10))
+                club_id = row["team"].id
+                if spent + price_units + reserve > budget_units or clubs[club_id] >= 3:
+                    continue
+                updated_clubs = clubs.copy()
+                updated_clubs[club_id] += 1
+                next_states.append((spent + price_units, score + score_by_id[player.id], selected + [row], updated_clubs))
+        # Keep the highest-scoring states, and among equal scores prefer the
+        # ones that have committed more budget: an unspent pound buys nothing.
+        next_states.sort(key=lambda state: (state[1], state[0]), reverse=True)
+        retained = next_states[:600]
+        diverse = sorted(next_states, key=lambda state: (len(state[3]), state[1], state[0]), reverse=True)[:250]
+        by_ids = {tuple(row["player"].id for row in state[2]): state for state in retained}
+        by_ids.update({tuple(row["player"].id for row in state[2]): state for state in diverse})
+        states = list(by_ids.values())[:850]
+        if not states:
+            beam_failed = True
             break
 
     if beam_failed:
+        # The search found no legal continuation. Fall back to a known-legal
+        # squad, but the result must say so: this is the cheapest squad that
+        # fits the rules, not the best squad for the budget.
         selected = feasible
         spent = sum(int(round(float(row["snapshot"].price) * 10)) for row in selected)
         score = sum(_score(row, strategy) for row in selected)
         states = [(spent, score, selected, Counter(row["team"].id for row in selected))]
 
-    def team_objective(state: tuple[int, float, list[dict[str, Any]], Counter]) -> tuple[float, float, float]:
+    def team_objective(state: tuple[int, float, list[dict[str, Any]], Counter]) -> tuple[float, ...]:
+        """Rank candidate squads, most important criterion first.
+
+        The final key used to be ``-spent``, which broke ties by preferring the
+        cheapest squad. With every projection equal -- as in preseason -- the
+        first two keys tied for every state and that tie-breaker decided the
+        squad outright, producing a minimal-cost team with the budget unspent.
+        It is now ``spent``, so an otherwise-equal squad that uses the budget
+        wins.
+        """
         _, lineup, lineup_score = _best_lineup(state[2], strategy)
         starting_ids = {row["player"].id for row in lineup}
-        bench_output = sum(_projected_output(row) for row in state[2] if row["player"].id not in starting_ids)
-        return (lineup_score + (bench_output * .05), state[1], -state[0])
+        bench_output = sum(_output_or_zero(row) for row in state[2] if row["player"].id not in starting_ids)
+        expected_minutes_total = sum(
+            float(getattr(row["snapshot"], "expected_minutes", None) or 0)
+            for row in lineup
+        )
+        secure_starters = sum(
+            1
+            for row in lineup
+            if (getattr(row["snapshot"], "rotation_risk", None) or 100) <= 25
+        )
+        return (
+            lineup_score + (bench_output * .05),  # expected starting-XI points
+            expected_minutes_total,               # expected minutes
+            secure_starters,                      # role security
+            state[1],                             # strategy score
+            state[0],                             # budget utilisation
+        )
 
     spent, score, selected, _ = max(states, key=team_objective)
     best_formation, best_starting, lineup_score = _best_lineup(selected, strategy)
     starting_ids = {row["player"].id for row in best_starting}
-    captain = max(best_starting, key=_projected_output)
-    vice_captain = max((row for row in best_starting if row["player"].id != captain["player"].id), key=_projected_output)
+    captain = max(best_starting, key=_output_or_zero)
+    vice_captain = max((row for row in best_starting if row["player"].id != captain["player"].id), key=_output_or_zero)
 
     def decorate(row: dict[str, Any], role: str) -> dict[str, Any]:
         snapshot = row["snapshot"]
@@ -215,10 +452,33 @@ def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: 
         if strategy == "differential" and float(getattr(snapshot, "ownership", 0) or 0) <= 10: reasons.append("low ownership")
         return {"row": row, "role": role, "score": _score(row, strategy), "reason": ", ".join(reasons[:2]) or "best available fit", "captain": row["player"].id == captain["player"].id, "vice_captain": row["player"].id == vice_captain["player"].id}
 
+    remaining = round(budget - spent / 10, 1)
+    best_excluded, marginal_gain = _best_excluded(
+        rows, selected, remaining, strategy
+    )
+
     return {
         "budget": budget,
         "spent": round(spent / 10, 1),
-        "remaining": round(budget - spent / 10, 1),
+        "remaining": remaining,
+        "checks": checks,
+        "tie_breakers": [
+            "Expected starting-XI points",
+            "Expected minutes",
+            "Role security",
+            "Strategy score",
+            "Budget utilisation",
+        ],
+        "best_excluded": best_excluded,
+        "marginal_gain": marginal_gain,
+        "optimised": not beam_failed,
+        "budget_explanation": (
+            "The optimiser found no legal squad within the budget, so this is "
+            "the cheapest squad that satisfies the FPL rules. It is a fallback, "
+            "not an optimised recommendation."
+            if beam_failed
+            else _budget_explanation(remaining, best_excluded, marginal_gain)
+        ),
         "score": round(lineup_score, 2),
         "strategy": strategy,
         "strategy_label": STRATEGIES[strategy]["label"],
