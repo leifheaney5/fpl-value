@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Templates · FPL Value Studio{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">SUGGESTED TEMPLATE TEAMS</p><h1>Valid squads for distinct strategies.</h1><p>Every result is built by the existing FPL-rule recommender. Each player shows affordable alternatives for its price slot.</p></div></div>
+<form class="filters" method="get"><label>Budget<input type="number" name="budget" min="50" max="100" step="0.1" value="{{ budget }}"></label><button type="submit">Generate templates</button></form>
+{% for item in templates %}<section class="panel"><h2>{{ item.label }}</h2><p>£{{ "%.1f"|format(item.recommendation.spent) }} spent · £{{ "%.1f"|format(item.recommendation.remaining) }} bank · {{ item.recommendation.formation }} · {{ "%.1f"|format(item.recommendation.score) }} projected output</p><div class="table-wrap"><table class="data-table"><thead><tr><th>Role</th><th>Player</th><th>Price</th><th>Price-slot alternatives</th></tr></thead><tbody>
+{% for slot in item.slots %}<tr><td>{{ slot.selected.role }}</td><td><a href="/players/{{ slot.selected.row.player.id }}">{{ slot.selected.row.player.full_name }}</a>{% if slot.selected.captain %} (C){% elif slot.selected.vice_captain %} (VC){% endif %}</td><td>£{{ "%.1f"|format(slot.selected.row.snapshot.price) }}</td><td>{% for alternative in slot.alternatives %}<a href="/players/{{ alternative.player.id }}">{{ alternative.player.full_name }}</a>{% if not loop.last %}, {% endif %}{% else %}No lower-priced alternative{% endfor %}</td></tr>{% endfor %}
+</tbody></table></div></section>{% else %}<section class="panel"><p class="empty">No snapshot data is available yet. Run a refresh before generating templates.</p></section>{% endfor %}
+{% endblock %}

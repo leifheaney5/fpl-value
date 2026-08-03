@@ -55,6 +55,7 @@ def _history_comparison(
     if previous is None:
         return {
             "reference": None,
+            "snapshot": None,
             "value": None,
             "delta_value": None,
             "value_direction": "No History",
@@ -77,6 +78,7 @@ def _history_comparison(
 
     return {
         "reference": previous.captured_at,
+        "snapshot": previous,
         "value": previous.value,
         "delta_value": delta_value,
         "value_direction": _direction(delta_value),

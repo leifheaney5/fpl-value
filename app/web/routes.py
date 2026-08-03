@@ -37,6 +37,8 @@ from app.services.queries import (
 from app.services.refresh import refresh_data
 from app.services.my_team import linked_team_data, transfer_plan
 from app.services.team_recommender import STRATEGIES, recommend_team_cached
+from app.services.player_intelligence import build_player_intelligence
+from app.services.template_teams import price_slot_suggestions, template_summaries
 from app.web.auth import safe_next_path, valid_credentials, valid_csrf
 
 
@@ -286,6 +288,60 @@ def transfer_finder(
         "min_reliable_percentile": min_reliable_percentile,
         "min_forward_percentile": min_forward_percentile, "max_ownership": max_ownership,
     })
+
+
+@router.get("/differentials", response_class=HTMLResponse)
+def differentials(
+    request: Request,
+    ownership: float = 10.0,
+    position: str | None = None,
+    max_price: float | None = None,
+    db: Session = Depends(get_db),
+):
+    rows = build_player_intelligence(latest_rows(db))
+    rows = [row for row in rows if row["snapshot"].ownership <= ownership]
+    if position:
+        rows = [row for row in rows if row["player"].position_short == position]
+    if max_price is not None:
+        rows = [row for row in rows if row["snapshot"].price <= max_price]
+    rows.sort(key=lambda row: row["differential"]["score"], reverse=True)
+    return templates.TemplateResponse(request=request, name="differentials.html", context={
+        "rows": rows, "ownership": ownership, "position": position or "", "max_price": max_price,
+    })
+
+
+@router.get("/transfer-market", response_class=HTMLResponse)
+def transfer_market(request: Request, db: Session = Depends(get_db)):
+    rows = build_player_intelligence(latest_rows(db))
+    def totals(row):
+        raw = row["snapshot"].raw or {}
+        return int(raw.get("transfers_in_event") or 0), int(raw.get("transfers_out_event") or 0)
+    incoming = sorted(rows, key=lambda row: totals(row)[0], reverse=True)[:10]
+    outgoing = sorted(rows, key=lambda row: totals(row)[1], reverse=True)[:10]
+    net = sorted(rows, key=lambda row: row["transfer_trend"]["net"] if row["transfer_trend"]["net"] is not None else -10**9, reverse=True)[:10]
+    return templates.TemplateResponse(request=request, name="transfer_market.html", context={
+        "incoming": incoming, "outgoing": outgoing, "net": net,
+    })
+
+
+@router.get("/templates", response_class=HTMLResponse)
+def templates_page(
+    request: Request,
+    budget: str = "100",
+    db: Session = Depends(get_db),
+):
+    budget_value = max(50.0, min(100.0, _optional_number(budget, float) or 100.0))
+    rows = latest_rows(db)
+    template_rows = []
+    if rows:
+        for item in template_summaries(rows, budget_value):
+            selected = item["recommendation"]["starting"] + item["recommendation"]["bench"]
+            item["slots"] = [
+                {"selected": player, "alternatives": price_slot_suggestions(player["row"], rows)}
+                for player in selected
+            ]
+            template_rows.append(item)
+    return templates.TemplateResponse(request=request, name="templates.html", context={"templates": template_rows, "budget": budget_value})
 
 
 @router.get("/diagnostics", response_class=HTMLResponse)

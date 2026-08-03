@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Transfer Market · FPL Value Studio{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">TRANSFER MARKET</p><h1>Current transfer activity.</h1><p>Totals come from the latest official FPL snapshot. Trend velocity is shown only when local daily snapshots support it.</p></div></div>
+<section class="dashboard-grid">{% for title, rows in [("Most transferred in", incoming), ("Most transferred out", outgoing), ("Best net transfer gains", net)] %}<article class="panel"><h2>{{ title }}</h2><div class="table-wrap"><table class="data-table"><thead><tr><th>Player</th><th>In</th><th>Out</th><th>Net</th><th>Trend</th></tr></thead><tbody>
+{% for row in rows %}<tr><td><a href="/players/{{ row.player.id }}">{{ row.player.full_name }}</a><small>{{ row.team.short_name }} · {{ row.player.position_short }}</small></td><td>{{ (row.snapshot.raw or {}).get("transfers_in_event", "—") }}</td><td>{{ (row.snapshot.raw or {}).get("transfers_out_event", "—") }}</td><td>{{ row.transfer_trend.net if row.transfer_trend.net is not none else "—" }}</td><td>{{ row.transfer_trend.classification }}{% if row.transfer_trend.velocity is not none %}<small>Δ {{ "%+d"|format(row.transfer_trend.velocity) }}</small>{% endif %}</td></tr>
+{% else %}<tr><td colspan="5" class="empty">No transfer snapshot data yet.</td></tr>{% endfor %}</tbody></table></div></article>{% endfor %}</section>
+{% endblock %}

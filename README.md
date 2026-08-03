@@ -21,6 +21,9 @@ CSV/Excel exports.
 - Color-coded movers dashboard and page
 - Player comparison
 - Transfer Finder with budget, minutes, risk, percentile, ownership, and availability constraints
+- Differential Finder with transparent ownership-aware scores, categories, confidence, and freshness labels
+- Transfer Market dashboard with current inbound/outbound/net activity and locally-derived trend status where history permits
+- Valid strategy templates and same-position affordable price-slot alternatives, reusing the existing squad-rule recommender
 - Model Diagnostics page that remains explicit when insufficient history exists
 - Searchable and filterable player explorer
 - API schema-change history
@@ -239,6 +242,21 @@ price. Projection inputs include form, points per game, points per 90,
 expected minutes, availability, fixture difficulty, and home advantage.
 
 These are transparent analytical heuristics, not official FPL predictions.
+
+### Decision surfaces
+
+\`/differentials\` ranks low-owned players using the existing forward value,
+expected minutes, form, availability, and rotation-risk inputs. It exposes the
+score components and marks each record as calculated from the latest official
+FPL snapshot. \`/transfer-market\` displays the current transfer-event totals
+from that same snapshot; a change-versus-prior-snapshot is only shown when
+local history exists. \`/templates\` produces valid 15-player squads using the
+existing feasibility-first recommender and presents affordable alternatives for
+each selected player's position/price slot.
+
+These screens do not claim intraday transfer feeds, elite-manager ownership,
+external injury news, or trained prediction-model outputs. Those require
+additional source-specific collection and validation.
 
 ## Production notes
 
