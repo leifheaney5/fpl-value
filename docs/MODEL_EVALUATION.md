@@ -129,6 +129,83 @@ be checked rather than hoped.
 | 2024/25 | 1.0221 | 0.6864 | 1.2151 | 0.3337 |
 | 2025/26 | 0.9573 | 0.7381 | 1.1610 | 0.3538 |
 
+## Trained candidates (run 2026-08-03)
+
+**Command:** `python -m app.cli evaluate --candidates --output docs/evaluation-candidates.json`
+Same 230,211 examples, same nine walk-forward folds.
+
+Two gradient-boosted variants were scored, differing only in loss function.
+
+### In-season
+
+| Model | MAE | RMSE | Spearman |
+| --- | ---: | ---: | ---: |
+| **gbdt_absolute** | **0.9724** | 2.2272 | 0.6502 |
+| existing_heuristic | 1.0638 | 2.1826 | **0.6899** |
+| gbdt_squared | 1.1350 | **2.0875** | 0.6704 |
+
+### Preseason
+
+| Model | MAE | RMSE | Spearman |
+| --- | ---: | ---: | ---: |
+| **gbdt_absolute** | **1.2039** | 2.5358 | 0.2983 |
+| minutes_weighted | 1.2862 | 2.3933 | 0.3058 |
+| existing_heuristic | 1.2891 | 2.3933 | 0.3065 |
+| fixture_adjusted | 1.4331 | 2.4036 | **0.3066** |
+| gbdt_squared | 1.5108 | 2.3555 | 0.2936 |
+
+## Decision: neither candidate ships
+
+The gate requires beating the best baseline on **both** accuracy and ranking.
+
+| State | MAE | Verdict | Spearman | Verdict |
+| --- | ---: | --- | ---: | --- |
+| In-season | 0.9724 vs 1.0638 | **clears** (−8.6%) | 0.6502 vs 0.6899 | **fails** |
+| Preseason | 1.2039 vs 1.2862 | **clears** (−6.4%) | 0.2983 vs 0.3066 | **fails** |
+
+Both candidates fail, in both states, on ranking. The heuristic stays.
+
+### Why, and what it implies
+
+The result is consistent rather than noisy: **absolute-error loss wins MAE
+decisively everywhere and loses Spearman everywhere.** That is what optimising
+absolute error does. The MAE-optimal prediction is the conditional *median*, and
+FPL points have a median of one or two for most players, so an L1 model predicts
+a narrow band near the median. That minimises average error and simultaneously
+compresses the spread the ranking depends on. The heuristic ranks better
+precisely because it is willing to spread predictions further apart.
+
+Squared error shows the mirror image: best RMSE in both states, worst preseason
+MAE and ranking.
+
+So the objective, not the model class, is the binding constraint. Neither loss
+optimises what the interface actually needs, which is ordering. The next attempt
+should optimise ranking directly — a pairwise or listwise objective — or predict
+the full distribution and rank on its mean rather than its median.
+
+### A correction worth recording
+
+An earlier single-fold check on this feature set (train 2022/23–2023/24, test
+2024/25) gave preseason Spearman of 0.3678 for absolute-error loss, which would
+have cleared the gate comfortably. Pooled across all nine folds it is **0.2983**,
+which does not.
+
+The single fold was the most recent and data-richest one, and it was not
+representative. It was read as evidence and it should not have been. This is
+what walk-forward evaluation is for, and it is the reason the full run happens
+before a decision rather than after.
+
+### Not yet evaluated
+
+The two-stage network is built and unit-tested but **has not been scored on the
+full folds**. Training it nine times across two information states on up to
+200,000 rows, single-threaded for reproducibility, is hours of compute and was
+not run. No claim is made about it in either direction.
+
+Given the finding above, the network as currently written would likely inherit
+the same ceiling: it fits points with L1, so it optimises the median for the
+same reason. Changing the objective should come before spending the compute.
+
 ## Limitations
 
 These are real and they bound what the numbers above can be read to mean.
@@ -162,9 +239,17 @@ If it wins one state and loses the other, it ships only for the state it wins,
 selected by information state at prediction time. If it loses both, the honest
 outcome is that the heuristic stays and the model does not ship.
 
+`scripts/train.py` enforces these thresholds and refuses to write an artefact
+that fails them, so a losing model cannot ship by accident.
+
+**Current status: nothing has cleared the gate.** The deployed
+`projected_points_5` heuristic remains in use, and the readiness registry
+reports it as the active fallback rather than implying a model is running.
+
 Reproduce with:
 
 ```bash
 python -m app.cli import-archive
 python -m app.cli evaluate --output docs/evaluation-baseline.json
+python -m app.cli evaluate --candidates --output docs/evaluation-candidates.json
 ```
