@@ -51,6 +51,9 @@ to produce a result.
 - Explicit season identity on every snapshot, with cross-season comparison rejected
 - Missing-versus-zero metric semantics with per-metric status and reason
 - Centralised season state and per-feature readiness
+- Ten seasons of historical per-gameweek data for model training
+- Point-in-time feature builder with a proven no-leakage guarantee
+- Walk-forward backtesting against six baselines
 - Railway Docker and cron configuration
 - Automated tests
 
@@ -233,6 +236,26 @@ and entry ID and left the refresh endpoint open to anyone.
 
 Full details, including Tailscale setup, are in
 [docs/SECURITY.md](docs/SECURITY.md).
+
+## Model training data
+
+Historical per-gameweek data comes from the MIT-licensed
+[vaastav/Fantasy-Premier-League](https://github.com/vaastav/Fantasy-Premier-League)
+archive, covering 2016-17 to 2025-26:
+
+```bash
+python -m app.cli import-archive                 # all seasons
+python -m app.cli import-archive --season 2024-25
+```
+
+Evaluate the baselines with walk-forward backtesting:
+
+```bash
+python -m app.cli evaluate --output docs/evaluation-baseline.json
+```
+
+See [docs/MODEL_EVALUATION.md](docs/MODEL_EVALUATION.md) for the recorded
+results and the bar a trained model has to clear.
 
 ## Data model
 
