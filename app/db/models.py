@@ -135,6 +135,7 @@ class PlayerSnapshot(Base):
             name="uq_player_snapshot_time",
         ),
         Index("ix_snapshot_player_time", "player_id", "captured_at"),
+        Index("ix_snapshot_season_time", "season", "captured_at"),
         Index("ix_snapshot_value_rank", "captured_at", "value_rank"),
         Index("ix_snapshot_reliable_rank", "captured_at", "reliable_rank"),
         Index("ix_snapshot_forward_rank", "captured_at", "forward_rank"),
@@ -150,7 +151,14 @@ class PlayerSnapshot(Base):
     captured_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
+    season: Mapped[str] = mapped_column(
+        String(9), nullable=False, default="2026/27", index=True
+    )
+    # Per-metric provenance: {"expected_minutes": {"status": ..., "reason": ...}}.
+    # A null metric column says "no value"; this says why.
+    metric_status: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
+    # Observations reported directly by the FPL API stay non-nullable.
     price: Mapped[float] = mapped_column(Float, nullable=False)
     total_points: Mapped[int] = mapped_column(Integer, nullable=False)
     minutes: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -165,14 +173,30 @@ class PlayerSnapshot(Base):
 
     form: Mapped[float] = mapped_column(Float, default=0.0)
     points_per_game: Mapped[float] = mapped_column(Float, default=0.0)
-    points_per_minute: Mapped[float] = mapped_column(Float, default=0.0)
-    points_per_90: Mapped[float] = mapped_column(Float, default=0.0)
-    points_per_start: Mapped[float] = mapped_column(Float, default=0.0)
-    points_per_team_match: Mapped[float] = mapped_column(Float, default=0.0)
-    value_per_90: Mapped[float] = mapped_column(Float, default=0.0)
-    start_rate: Mapped[float] = mapped_column(Float, default=0.0)
-    minutes_per_team_match: Mapped[float] = mapped_column(Float, default=0.0)
-    average_minutes_per_start: Mapped[float] = mapped_column(Float, default=0.0)
+    points_per_minute: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
+    points_per_90: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
+    points_per_start: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
+    points_per_team_match: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
+    value_per_90: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
+    start_rate: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
+    minutes_per_team_match: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
+    average_minutes_per_start: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
 
     expected_goals: Mapped[float] = mapped_column(Float, default=0.0)
     expected_assists: Mapped[float] = mapped_column(Float, default=0.0)
@@ -182,15 +206,21 @@ class PlayerSnapshot(Base):
     ict_index: Mapped[float] = mapped_column(Float, default=0.0)
     ownership: Mapped[float] = mapped_column(Float, default=0.0)
 
-    value: Mapped[float] = mapped_column(Float, default=0.0)
+    value: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
     value_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
     value_percentile: Mapped[float | None] = mapped_column(
         Float, nullable=True
     )
     value_tier: Mapped[str] = mapped_column(String(30), default="Not Ranked")
 
-    reliability_factor: Mapped[float] = mapped_column(Float, default=0.0)
-    reliable_value: Mapped[float] = mapped_column(Float, default=0.0)
+    reliability_factor: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
+    reliable_value: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
     reliable_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
     reliable_percentile: Mapped[float | None] = mapped_column(
         Float, nullable=True
@@ -225,11 +255,19 @@ class PlayerSnapshot(Base):
     availability_factor: Mapped[float] = mapped_column(Float, default=1.0)
     availability_status: Mapped[str] = mapped_column(String(5), default="a")
     chance_of_playing: Mapped[float | None] = mapped_column(Float, nullable=True)
-    expected_minutes: Mapped[float] = mapped_column(Float, default=0.0)
-    projected_points_5: Mapped[float] = mapped_column(Float, default=0.0)
+    expected_minutes: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
+    projected_points_5: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
     upcoming_fixture_count: Mapped[int] = mapped_column(Integer, default=0)
-    average_fixture_difficulty: Mapped[float] = mapped_column(Float, default=0.0)
-    forward_value: Mapped[float] = mapped_column(Float, default=0.0)
+    average_fixture_difficulty: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
+    forward_value: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
     forward_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
     forward_percentile: Mapped[float | None] = mapped_column(
         Float, nullable=True
@@ -255,15 +293,45 @@ class PlayerSnapshot(Base):
     refresh_run: Mapped[RefreshRun] = relationship()
 
 
+class Gameweek(Base):
+    """Season calendar, persisted from the bootstrap ``events`` payload.
+
+    Previously these records were parsed only to detect schema changes and then
+    discarded, which left the application with no way to know the current
+    gameweek or the next deadline.
+    """
+
+    __tablename__ = "gameweeks"
+    __table_args__ = (
+        UniqueConstraint("season", "number", name="uq_gameweek_season_number"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    season: Mapped[str] = mapped_column(String(9), nullable=False)
+    number: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(60), default="")
+    deadline_time: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished: Mapped[bool] = mapped_column(Boolean, default=False)
+    data_checked: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_current: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_next: Mapped[bool] = mapped_column(Boolean, default=False)
+    raw: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
 class GameweekHistory(Base):
     __tablename__ = "gameweek_history"
     __table_args__ = (
-        UniqueConstraint("player_id", "gameweek", name="uq_player_gameweek"),
+        UniqueConstraint(
+            "player_id", "season", "gameweek", name="uq_player_season_gameweek"
+        ),
         Index("ix_gameweek_player_event", "player_id", "gameweek"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), nullable=False)
+    season: Mapped[str] = mapped_column(String(9), nullable=False, default="2026/27")
     gameweek: Mapped[int] = mapped_column(Integer, nullable=False)
     opponent: Mapped[str] = mapped_column(String(100), default="")
     is_home: Mapped[bool] = mapped_column(Boolean, default=False)
