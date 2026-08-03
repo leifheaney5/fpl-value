@@ -156,7 +156,12 @@ CONTRACTS: dict[str, MetricContract] = {
         unit="pts per 90",
         valid_range=(0.0, 30.0),
         minimum_sample=1,
-        null_behaviour="Null when no minutes have been played this season.",
+        null_behaviour=(
+            "Null when the team has played no matches this season. The "
+            "preseason bootstrap still reports the previous season's minutes "
+            "and points, so a rate built from them would describe a season "
+            "that has ended."
+        ),
         precision=3,
     ),
     "expected_minutes": _contract(

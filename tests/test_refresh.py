@@ -9,7 +9,7 @@ from app.db.base import Base
 from app.db.models import Gameweek, PlayerSnapshot, RefreshRun, SchemaChange
 from app.services.refresh import _update_schema, refresh_data, utcnow
 
-from fakes import FakeClient, PreseasonClient
+from fakes import CarryOverPreseasonClient, FakeClient, PreseasonClient
 
 
 def test_refresh_pipeline(tmp_path):
@@ -69,6 +69,46 @@ def test_preseason_refresh_stores_null_metrics_rather_than_zero(tmp_path):
         # And the run explains the ranking gap rather than leaving it implicit.
         assert run.details["ranked_count"] == 0
         assert sum(run.details["ranking_exclusions"].values()) == 1
+
+
+def test_carried_over_minutes_do_not_become_current_season_rates(tmp_path):
+    """Previous-season minutes must not produce a current-season points-per-90.
+
+    In preseason the FPL bootstrap still reports last season's minutes and
+    points. Dividing them gives a real-looking rate that describes a season that
+    has ended, presented as though it described this one.
+    """
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'carryover.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(engine, expire_on_commit=False)
+    settings = Settings(
+        database_url=f"sqlite:///{tmp_path / 'carryover.db'}",
+        current_season="2026/27",
+    )
+
+    with Session() as db:
+        refresh_data(db, settings, CarryOverPreseasonClient())
+        snapshot = db.scalar(select(PlayerSnapshot))
+
+        # The raw observations are stored as reported.
+        assert snapshot.minutes == 1170
+        assert snapshot.total_points == 43
+        assert snapshot.team_matches == 0
+
+        # Every rate derived from them is unavailable, because no match has been
+        # played this season and the inputs therefore describe a different one.
+        assert snapshot.points_per_90 is None
+        assert snapshot.points_per_minute is None
+        assert snapshot.points_per_start is None
+        assert snapshot.average_minutes_per_start is None
+        assert snapshot.value is None
+        assert snapshot.start_rate is None
+
+        reason = snapshot.metric_status["points_per_90"]["reason"]
+        assert "No matches played" in reason
 
 
 def test_preseason_refresh_records_the_season_calendar(tmp_path):

@@ -113,3 +113,25 @@ class PreseasonClient(FakeClient):
 
     def fixtures(self):
         return [dict(fixture, finished=False) for fixture in super().fixtures()]
+
+
+class CarryOverPreseasonClient(PreseasonClient):
+    """The shape the real FPL API actually returns in preseason.
+
+    Observed on the live deployment on 2026-08-03: no fixture has finished, yet
+    ``minutes`` and ``total_points`` still hold the previous season's totals.
+    Any rate derived from them describes last season while being labelled as
+    this one.
+    """
+
+    def bootstrap(self):
+        payload = super().bootstrap()
+        payload["elements"][0].update(
+            {
+                "total_points": 43,
+                "minutes": 1170,
+                "starts": 13,
+                "points_per_game": "1.8",
+            }
+        )
+        return payload

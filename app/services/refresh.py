@@ -458,7 +458,12 @@ def refresh_data(
             matches = team_matches.get(team_id, 0)
 
             has_matches = matches > 0
-            has_minutes = minutes > 0
+            # Minutes only count as this season's once a match has been played.
+            # The preseason bootstrap still reports the previous season's
+            # minutes and points, so a rate built from them would describe a
+            # season that has ended while being labelled as this one.
+            has_minutes = matches > 0 and minutes > 0
+            has_starts = matches > 0 and starts > 0
             no_matches_reason = "No matches played yet this season"
             no_minutes_reason = "No minutes played yet this season"
 
@@ -469,7 +474,7 @@ def refresh_data(
             value = points / price if price > 0 and has_matches else None
             p90 = points * 90.0 / minutes if has_minutes else None
             ppm = points / minutes if has_minutes else None
-            pps = points / starts if starts > 0 else None
+            pps = points / starts if has_starts else None
             pptm = points / matches if has_matches else None
             start_rate = 100.0 * starts / matches if has_matches else None
             mptm = minutes / matches if has_matches else None
@@ -566,7 +571,7 @@ def refresh_data(
                     "value_per_90": _round(value_p90, 3),
                     "start_rate": _round(start_rate, 1),
                     "minutes_per_team_match": _round(mptm, 2),
-                    "average_minutes_per_start": round(minutes / starts, 2) if starts > 0 else None,
+                    "average_minutes_per_start": round(minutes / starts, 2) if has_starts else None,
                     "expected_goals": safe_float(
                         item.get("expected_goals")
                     ),
@@ -612,7 +617,10 @@ def refresh_data(
                             start_rate, "start_rate", no_matches_reason, has_matches
                         ),
                         "points_per_90": _status(
-                            p90, "points_per_90", no_minutes_reason, has_minutes
+                            p90,
+                            "points_per_90",
+                            no_matches_reason if not has_matches else no_minutes_reason,
+                            has_minutes,
                         ),
                         "expected_minutes": _status(
                             exp_minutes, "expected_minutes", no_matches_reason, has_matches
