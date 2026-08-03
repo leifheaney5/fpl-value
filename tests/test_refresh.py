@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from app.config import Settings
 from app.db.base import Base
 from app.db.models import Gameweek, PlayerSnapshot, RefreshRun, SchemaChange
-from app.services.refresh import refresh_data
+from app.services.refresh import _update_schema, refresh_data, utcnow
 
 from fakes import FakeClient, PreseasonClient
 
@@ -94,6 +94,64 @@ def test_preseason_refresh_records_the_season_calendar(tmp_path):
         # Re-running must update in place rather than duplicate.
         refresh_data(db, settings, PreseasonClient())
         assert len(db.scalars(select(Gameweek)).all()) == 1
+
+
+def test_first_schema_observation_is_a_baseline_not_hundreds_of_additions(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'baseline.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(engine, expire_on_commit=False)
+
+    with Session() as db:
+        result = _update_schema(db, {"players": {"id", "web_name", "now_cost"}}, utcnow())
+        db.commit()
+
+        assert result["baseline"] is True
+        assert result["added"] == 0
+        assert result["removed"] == 0
+        assert result["fields"] == 3
+        types = {change.change_type for change in db.scalars(select(SchemaChange)).all()}
+        assert types == {"Baseline"}
+
+
+def test_a_field_appearing_after_the_baseline_is_an_addition(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'added.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(engine, expire_on_commit=False)
+
+    with Session() as db:
+        _update_schema(db, {"players": {"id", "web_name"}}, utcnow())
+        db.commit()
+        result = _update_schema(db, {"players": {"id", "web_name", "new_field"}}, utcnow())
+        db.commit()
+
+        assert result["baseline"] is False
+        assert result["added"] == 1
+        added = db.scalars(
+            select(SchemaChange).where(SchemaChange.change_type == "Added")
+        ).all()
+        assert [change.field_name for change in added] == ["new_field"]
+
+
+def test_a_real_refresh_records_a_baseline_and_no_changes(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'runbaseline.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(engine, expire_on_commit=False)
+    settings = Settings(database_url=f"sqlite:///{tmp_path / 'runbaseline.db'}")
+
+    with Session() as db:
+        run = refresh_data(db, settings, FakeClient())
+        assert run.details["schema_baseline"] is True
+        assert run.schema_change_count == 0
+        assert run.details["schema_fields"] > 0
 
 
 def test_refresh_records_schema_removals_and_rejects_overlap(tmp_path):

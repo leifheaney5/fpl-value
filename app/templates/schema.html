@@ -4,12 +4,13 @@
 <div class="page-heading">
   <div><p class="eyebrow">DATA CONTRACT</p><h1>FPL API schema history.</h1><p>Added and removed fields are recorded so upstream changes are visible.</p></div>
 </div>
+<p class="muted">The first observation of the FPL schema is recorded as a <strong>Baseline</strong>, not as a change. Only fields that appear or disappear afterwards are changes.</p>
 <div class="table-wrap">
 <table class="data-table">
   <thead><tr><th>Detected</th><th>Category</th><th>Change</th><th>Field</th></tr></thead>
   <tbody>
   {% for change in changes %}
-    <tr><td>{{ change.detected_at }}</td><td>{{ change.category }}</td><td>{{ change.change_type }}</td><td><code>{{ change.field_name }}</code></td></tr>
+    <tr class="{{ 'schema-baseline' if change.change_type == 'Baseline' }}"><td>{{ change.detected_at }}</td><td>{{ change.category }}</td><td>{{ change.change_type }}</td><td><code>{{ change.field_name }}</code></td></tr>
   {% else %}
     <tr><td colspan="4" class="empty">No schema changes recorded.</td></tr>
   {% endfor %}

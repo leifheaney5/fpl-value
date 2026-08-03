@@ -4,6 +4,11 @@
 <div class="page-heading">
   <div><p class="eyebrow">HISTORICAL MOVEMENT</p><h1>{{ period }} value and price movers.</h1><p>Positive rank change means the player moved upward in the value rankings.</p></div>
 </div>
+<p class="muted">
+  Window {{ window.period }} · {{ window.observations }} player{{ "s" if window.observations != 1 }} had a comparable earlier snapshot ·
+  {{ window.risers }} rose and {{ window.fallers }} fell by more than {{ window.threshold }} ·
+  {{ window.unchanged }} did not move.
+</p>
 
 <div class="period-tabs">
   {% for item in ["1D","7D","30D"] %}
@@ -28,12 +33,16 @@
           <td>£{{ "%.1f"|format(row.snapshot.price) }}</td>
           <td>{{ metric_cell(row.snapshot, "value") }}</td>
           <td><span class="movement {{ row.history[period].value_direction|lower|replace(' ', '-') }}">{{ "%+.2f"|format(row.history[period].delta_value) }}</span></td>
-          <td><span class="movement {{ row.history[period].price_direction|lower|replace(' ', '-') }}">{{ "%+.1f"|format(row.history[period].delta_price) }}</span></td>
-          <td>{{ "%+.2f"|format(row.history[period].delta_ownership) }}</td>
+          <td><span class="movement {{ row.history[period].price_direction|lower|replace(' ', '-') }}">{{ "%+.1f"|format(row.history[period].delta_price) if row.history[period].delta_price is not none else "—" }}</span></td>
+          <td>{{ "%+.2f"|format(row.history[period].delta_ownership) if row.history[period].delta_ownership is not none else "—" }}</td>
           <td>{{ "%+d"|format(row.history[period].delta_rank) if row.history[period].delta_rank is not none else "—" }}</td>
         </tr>
       {% else %}
-        <tr><td colspan="7" class="empty">Not enough {{ period }} history yet.</td></tr>
+        <tr><td colspan="7" class="empty">
+          {% if window.observations == 0 %}No player has an earlier {{ period }} snapshot to compare against yet.
+          {% else %}No player moved by more than {{ window.threshold }} over {{ period }}. Nobody is listed rather than showing unchanged players as movers.
+          {% endif %}
+        </td></tr>
       {% endfor %}
       </tbody>
     </table>

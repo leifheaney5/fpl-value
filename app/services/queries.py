@@ -1,12 +1,20 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Player, PlayerSnapshot, RefreshRun, SchemaChange, Team
+from app.db.models import (
+    Gameweek,
+    Player,
+    PlayerSnapshot,
+    RefreshRun,
+    SchemaChange,
+    Team,
+)
+from app.services.season_state import readiness_for, season_state
 
 
 def _sort_key(value: Any, descending: bool) -> tuple[int, float]:
@@ -440,30 +448,96 @@ def dashboard_data(db: Session, season: str) -> dict[str, Any]:
             if row["history"][comparison_label]["delta_value"] is not None
         ]
 
+    # Movement lists share the corrected classification, so the dashboard cannot
+    # disagree with the Movers page about who moved.
+    threshold = MOVEMENT_THRESHOLDS["value"]
     top_risers = sorted(
-        comparable,
+        [
+            row for row in comparable
+            if classify_movement(
+                row["history"][comparison_label]["delta_value"], threshold
+            ) == "riser"
+        ],
         key=lambda row: row["history"][comparison_label]["delta_value"],
         reverse=True,
     )[:8]
     top_fallers = sorted(
-        comparable,
+        [
+            row for row in comparable
+            if classify_movement(
+                row["history"][comparison_label]["delta_value"], threshold
+            ) == "faller"
+        ],
         key=lambda row: row["history"][comparison_label]["delta_value"],
     )[:8]
 
+    # Account for the gap between "players tracked" and "players ranked" rather
+    # than showing two numbers that do not add up.
+    exclusion_reasons: dict[str, int] = {}
+    for row in rows:
+        snapshot = row["snapshot"]
+        if snapshot.value_rank is not None:
+            continue
+        recorded = (snapshot.metric_status or {}).get("value") or {}
+        reason = recorded.get("reason") or "No positive value score to rank"
+        exclusion_reasons[reason] = exclusion_reasons.get(reason, 0) + 1
+
+    ranked_count = sum(
+        1 for snapshot in snapshots if snapshot.value_rank is not None
+    )
+    latest_time = latest_snapshot_time(db, season)
+    gameweeks = db.scalars(
+        select(Gameweek).where(Gameweek.season == season)
+    ).all()
+    now = datetime.now(timezone.utc)
+    state = season_state(gameweeks, latest_time, now)
+    age_hours = (
+        (now - (latest_time.replace(tzinfo=timezone.utc)
+                if latest_time.tzinfo is None else latest_time)).total_seconds()
+        / 3600.0
+        if latest_time is not None
+        else None
+    )
+    projections_available = sum(
+        1
+        for snapshot in snapshots
+        if snapshot.projected_points_5 is not None and snapshot.projected_points_5 > 0
+    )
+    readiness = {
+        name: readiness_for(
+            name,
+            {
+                "projections_available": projections_available,
+                "player_count": len(rows),
+                "team_matches": max(
+                    (snapshot.team_matches for snapshot in snapshots), default=0
+                ),
+                "snapshot_count": 2 if comparable else 1,
+            },
+            state=state["state"],
+            age_hours=age_hours,
+        )
+        for name in ("projections", "expected_minutes", "movers", "recommendations")
+    }
+
     return {
         "rows": rows,
+        "season": season,
+        "season_state": state,
+        "readiness": readiness,
         "player_count": len(rows),
-        "ranked_count": sum(
-            1 for snapshot in snapshots if snapshot.value_rank is not None
-        ),
+        "ranked_count": ranked_count,
+        "excluded_count": len(rows) - ranked_count,
+        "exclusion_reasons": exclusion_reasons,
         "best_reliable": by_reliable[:10],
         "best_forward": by_forward[:10],
         "low_rotation": low_rotation[:10],
         "position_averages": position_averages,
         "latest_run": latest_run(db),
-        "latest_time": latest_snapshot_time(db, season),
+        "latest_time": latest_time,
         "schema_changes": recent_schema_changes(db, 10),
         "comparison_label": comparison_label,
+        "movement_threshold": threshold,
         "top_risers": top_risers,
         "top_fallers": top_fallers,
     }

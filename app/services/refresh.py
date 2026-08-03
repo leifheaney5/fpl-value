@@ -80,12 +80,20 @@ def _update_schema(
     db: Session,
     schema: dict[str, set[str]],
     captured_at: datetime,
-) -> int:
+) -> dict[str, Any]:
+    """Record the observed API schema and report what changed.
+
+    The first observation is a baseline, not a change. Treating it as one
+    produced hundreds of "Added" rows on a new database and buried every real
+    change that followed.
+    """
     existing = {
         (field.category, field.field_name): field
         for field in db.scalars(select(SchemaField)).all()
     }
-    change_count = 0
+    is_baseline = not existing
+    added = 0
+    removed = 0
 
     current_pairs = {
         (category, field)
@@ -109,11 +117,12 @@ def _update_schema(
                 SchemaChange(
                     detected_at=captured_at,
                     category=category,
-                    change_type="Added",
+                    change_type="Baseline" if is_baseline else "Added",
                     field_name=field_name,
                 )
             )
-            change_count += 1
+            if not is_baseline:
+                added += 1
         else:
             if not row.active:
                 db.add(
@@ -124,7 +133,7 @@ def _update_schema(
                         field_name=field_name,
                     )
                 )
-                change_count += 1
+                added += 1
             row.active = True
             row.last_seen = captured_at
 
@@ -139,9 +148,14 @@ def _update_schema(
                     field_name=row.field_name,
                 )
             )
-            change_count += 1
+            removed += 1
 
-    return change_count
+    return {
+        "baseline": is_baseline,
+        "added": added,
+        "removed": removed,
+        "fields": len(current_pairs),
+    }
 
 
 def _status(
@@ -242,12 +256,19 @@ def refresh_data(
         captured_at = utcnow()
         logger.info("refresh_api_payload players=%s fixtures=%s", len(bootstrap.get("elements", [])), len(fixtures_payload))
 
-        schema_change_count = _update_schema(
+        schema_result = _update_schema(
             db,
             _schema_sets(bootstrap, fixtures_payload),
             captured_at,
         )
-        logger.info("refresh_schema_changes count=%s", schema_change_count)
+        schema_change_count = schema_result["added"] + schema_result["removed"]
+        logger.info(
+            "refresh_schema baseline=%s added=%s removed=%s fields=%s",
+            schema_result["baseline"],
+            schema_result["added"],
+            schema_result["removed"],
+            schema_result["fields"],
+        )
 
         teams_payload = [
             item for item in bootstrap.get("teams", [])
@@ -713,6 +734,8 @@ def refresh_data(
                 1 for row in computed if row.get("value_rank") is not None
             ),
             "ranking_exclusions": value_exclusions,
+            "schema_baseline": schema_result["baseline"],
+            "schema_fields": schema_result["fields"],
         }
         db.commit()
         db.refresh(run)

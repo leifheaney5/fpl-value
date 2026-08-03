@@ -8,10 +8,12 @@
     <p class="lede">Raw value, reliability-adjusted value, forward projections, and playing-time risk in one persistent analytics workspace.</p>
   </div>
   <div class="actions">
+    {% if request.state.authenticated %}
     <form method="post" action="/admin/refresh">
       <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
       <button type="submit">Refresh FPL data</button>
     </form>
+    {% endif %}
     <a class="button secondary" href="/spreadsheet">Open master spreadsheet</a>
     <a class="button ghost" href="/exports/current.xlsx">Export Excel</a>
     <a class="button ghost" href="/exports/current.csv">Export CSV</a>
@@ -19,10 +21,43 @@
 </section>
 
 <section class="cards">
+  <article class="stat"><span>Season</span><strong class="small-value">{{ season }}</strong></article>
+  <article class="stat"><span>Season state</span><strong class="small-value">{{ season_state.label }}</strong></article>
   <article class="stat"><span>Players</span><strong>{{ player_count }}</strong></article>
   <article class="stat"><span>Ranked</span><strong>{{ ranked_count }}</strong></article>
   <article class="stat"><span>Last refresh</span><strong class="small-value">{{ latest_time or "Never" }}</strong></article>
   <article class="stat"><span>Refresh status</span><strong class="small-value">{{ latest_run.status if latest_run else "No runs" }}</strong></article>
+</section>
+
+<section class="panel readiness">
+  <div class="panel-title">
+    <h2>Season and data readiness</h2>
+    <span class="muted">
+      {% if season_state.next_gameweek %}Next: GW{{ season_state.next_gameweek }}{% if season_state.next_deadline %} · deadline {{ season_state.next_deadline.strftime("%d %b %H:%M UTC") }}{% endif %}{% else %}No upcoming gameweek{% endif %}
+    </span>
+  </div>
+  <p class="muted">{{ season_state.explanation }}</p>
+  {% if season_state.data_is_stale %}<p class="error">The most recent snapshot is more than 48 hours old. Run a refresh before relying on these figures.</p>{% endif %}
+
+  <h3>Ranking coverage</h3>
+  <p class="muted">{{ ranked_count }} of {{ player_count }} players are ranked. {{ excluded_count }} are excluded:</p>
+  <ul class="readiness-checks">
+    {% for reason, count in exclusion_reasons.items() %}
+    <li class="fail"><strong>{{ count }}</strong> · {{ reason }}</li>
+    {% else %}
+    <li class="pass">Every tracked player is ranked.</li>
+    {% endfor %}
+  </ul>
+
+  <h3>Feature readiness</h3>
+  <ul class="readiness-checks">
+    {% for name, verdict in readiness.items() %}
+    <li class="{{ 'pass' if verdict.state == 'ready' else 'fail' }}">
+      <strong>{{ name|replace("_", " ")|title }}</strong> · {{ verdict.state|replace("_", " ") }}
+      <small>{{ verdict.explanation }}</small>
+    </li>
+    {% endfor %}
+  </ul>
 </section>
 
 {% if my_team %}
