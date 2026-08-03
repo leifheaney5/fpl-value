@@ -328,15 +328,26 @@ class Gameweek(Base):
 class GameweekHistory(Base):
     __tablename__ = "gameweek_history"
     __table_args__ = (
+        # fixture_id is part of the key: a double gameweek gives a player two
+        # fixtures in the same gameweek.
         UniqueConstraint(
-            "player_id", "season", "gameweek", name="uq_player_season_gameweek"
+            "player_code", "season", "gameweek", "fixture_id",
+            name="uq_history_code_season_fixture",
         ),
         Index("ix_gameweek_player_event", "player_id", "gameweek"),
         Index("ix_gameweek_history_season_gw", "season", "gameweek"),
+        Index("ix_gameweek_history_code_season", "player_code", "season"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), nullable=False)
+    # The stable FPL player code. Present for every player in every season,
+    # including those who have since left the league -- excluding them would
+    # train a model only on careers that survived.
+    player_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Optional link to a currently-active player. Null for departed players.
+    player_id: Mapped[int | None] = mapped_column(
+        ForeignKey("players.id"), nullable=True
+    )
     season: Mapped[str] = mapped_column(String(9), nullable=False, default="2026/27")
     gameweek: Mapped[int] = mapped_column(Integer, nullable=False)
     # "api" for rows collected from the live FPL endpoints, "archive" for rows

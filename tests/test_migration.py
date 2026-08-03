@@ -62,7 +62,9 @@ def test_gameweek_history_is_unique_per_season(tmp_path):
     inspector = sa.inspect(sa.create_engine(url))
     constraints = inspector.get_unique_constraints("gameweek_history")
     columns = {tuple(c["column_names"]) for c in constraints}
-    assert ("player_id", "season", "gameweek") in columns
+    # Keyed on the stable player code rather than the current-season element id,
+    # so history for departed players is retained (revision 0007).
+    assert ("player_code", "season", "gameweek", "fixture_id") in columns
     assert ("player_id", "gameweek") not in columns
 
 

@@ -49,6 +49,30 @@ def command_import_history(directory: str, season: str) -> int:
     return 0
 
 
+def command_import_archive(seasons: list[str] | None) -> int:
+    from app.services.archive_import import (
+        SEASONS,
+        HttpArchiveReader,
+        import_archive_season,
+    )
+
+    reader = HttpArchiveReader()
+    targets = seasons or list(SEASONS)
+    totals = {"rows_read": 0, "rows_written": 0, "rows_rejected": 0, "derived_starts": 0}
+    with SessionLocal() as db:
+        for directory in targets:
+            result = import_archive_season(db, directory, reader)
+            for key in totals:
+                totals[key] += int(result[key])
+            print(
+                f"{result['season']}  era={result['era']:<13} "
+                f"read={result['rows_read']:>6} written={result['rows_written']:>6} "
+                f"rejected={result['rows_rejected']:>6} derived_starts={result['derived_starts']:>6}"
+            )
+    print("total " + "  ".join(f"{key}={value}" for key, value in totals.items()))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="FPL Value Studio CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -68,6 +92,14 @@ def build_parser() -> argparse.ArgumentParser:
         "untagged import mixes with the current season.",
     )
 
+    archive = subparsers.add_parser("import-archive")
+    archive.add_argument(
+        "--season",
+        action="append",
+        dest="seasons",
+        help="Archive directory such as 2024-25. Repeatable. Defaults to all.",
+    )
+
     return parser
 
 
@@ -79,6 +111,8 @@ def main() -> int:
         return command_refresh(args.scheduled, args.force)
     if args.command == "import-history":
         return command_import_history(args.directory, args.season)
+    if args.command == "import-archive":
+        return command_import_archive(args.seasons)
     return 2
 
 
