@@ -48,7 +48,7 @@ def linked_team_data(db: Session, client: FPLClient, settings: Settings) -> dict
     benchmark_events = remote["benchmark_events"]
     picks = remote["picks"]
 
-    rows_by_id = {row["player"].id: row for row in latest_rows(db)}
+    rows_by_id = {row["player"].id: row for row in latest_rows(db, settings.current_season)}
     squad = []
     for pick in picks:
         row = rows_by_id.get(pick.get("element"))

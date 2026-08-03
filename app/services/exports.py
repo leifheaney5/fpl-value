@@ -50,8 +50,8 @@ def _excel_value(value):
     return value
 
 
-def csv_bytes(db: Session) -> bytes:
-    rows = latest_rows(db)
+def csv_bytes(db: Session, season: str) -> bytes:
+    rows = latest_rows(db, season)
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow([column for column, _ in EXPORT_COLUMNS])
@@ -60,8 +60,8 @@ def csv_bytes(db: Session) -> bytes:
     return buffer.getvalue().encode("utf-8-sig")
 
 
-def xlsx_bytes(db: Session) -> bytes:
-    rows = latest_rows(db)
+def xlsx_bytes(db: Session, season: str) -> bytes:
+    rows = latest_rows(db, season)
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Dashboard"

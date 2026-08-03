@@ -31,8 +31,11 @@ def _at_most(value: Any, threshold: float) -> bool:
     return value is not None and float(value) <= threshold
 
 
-def latest_snapshot_time(db: Session):
-    return db.scalar(select(func.max(PlayerSnapshot.captured_at)))
+def latest_snapshot_time(db: Session, season: str):
+    return db.scalar(
+        select(func.max(PlayerSnapshot.captured_at))
+        .where(PlayerSnapshot.season == season)
+    )
 
 
 def _direction(value: float | None) -> str:
@@ -48,6 +51,7 @@ def _direction(value: float | None) -> str:
 def _historical_map(
     db: Session,
     target_time,
+    season: str,
 ) -> dict[int, PlayerSnapshot]:
     ranked = (
         select(
@@ -59,7 +63,10 @@ def _historical_map(
             )
             .label("row_number"),
         )
-        .where(PlayerSnapshot.captured_at <= target_time)
+        .where(
+            PlayerSnapshot.captured_at <= target_time,
+            PlayerSnapshot.season == season,
+        )
         .subquery()
     )
     snapshots = db.scalars(
@@ -136,8 +143,8 @@ def _history_comparison(
     }
 
 
-def latest_rows(db: Session) -> list[dict[str, Any]]:
-    latest = latest_snapshot_time(db)
+def latest_rows(db: Session, season: str) -> list[dict[str, Any]]:
+    latest = latest_snapshot_time(db, season)
     if latest is None:
         return []
 
@@ -145,13 +152,16 @@ def latest_rows(db: Session) -> list[dict[str, Any]]:
         select(PlayerSnapshot, Player, Team)
         .join(Player, Player.id == PlayerSnapshot.player_id)
         .join(Team, Team.id == Player.team_id)
-        .where(PlayerSnapshot.captured_at == latest)
+        .where(
+            PlayerSnapshot.captured_at == latest,
+            PlayerSnapshot.season == season,
+        )
     ).all()
 
     historical = {
-        "1D": _historical_map(db, latest - timedelta(days=1)),
-        "7D": _historical_map(db, latest - timedelta(days=7)),
-        "30D": _historical_map(db, latest - timedelta(days=30)),
+        "1D": _historical_map(db, latest - timedelta(days=1), season),
+        "7D": _historical_map(db, latest - timedelta(days=7), season),
+        "30D": _historical_map(db, latest - timedelta(days=30), season),
     }
 
     result = []
@@ -176,6 +186,7 @@ def latest_rows(db: Session) -> list[dict[str, Any]]:
 def filtered_players(
     db: Session,
     *,
+    season: str,
     position: str | None = None,
     max_price: float | None = None,
     max_rotation: float | None = None,
@@ -190,7 +201,7 @@ def filtered_players(
     sort: str = "reliable_value",
     movement_period: str = "1D",
 ) -> list[dict[str, Any]]:
-    rows = latest_rows(db)
+    rows = latest_rows(db, season)
 
     if position:
         rows = [
@@ -257,12 +268,16 @@ def filtered_players(
 def player_history(
     db: Session,
     player_id: int,
+    season: str,
     limit: int = 180,
 ) -> list[PlayerSnapshot]:
     return list(
         db.scalars(
             select(PlayerSnapshot)
-            .where(PlayerSnapshot.player_id == player_id)
+            .where(
+                PlayerSnapshot.player_id == player_id,
+                PlayerSnapshot.season == season,
+            )
             .order_by(PlayerSnapshot.captured_at.desc())
             .limit(limit)
         ).all()
@@ -318,6 +333,7 @@ def classify_movement(delta: float | None, threshold: float) -> str:
 
 def movers_data(
     db: Session,
+    season: str,
     period: str = "7D",
     thresholds: dict[str, float] | None = None,
     limit: int = 20,
@@ -325,7 +341,7 @@ def movers_data(
     if period not in {"1D", "7D", "30D"}:
         period = "7D"
     thresholds = {**MOVEMENT_THRESHOLDS, **(thresholds or {})}
-    rows = latest_rows(db)
+    rows = latest_rows(db, season)
 
     result: dict[str, Any] = {}
     for label, field in MOVEMENT_FIELDS.items():
@@ -359,9 +375,13 @@ def movers_data(
     return result
 
 
-def diagnostics_data(db: Session) -> dict[str, Any]:
-    rows = latest_rows(db)
-    history_points = sum(1 for row in rows if len(player_history(db, row["player"].id, 2)) >= 2)
+def diagnostics_data(db: Session, season: str) -> dict[str, Any]:
+    rows = latest_rows(db, season)
+    history_points = sum(
+        1
+        for row in rows
+        if len(player_history(db, row["player"].id, season, 2)) >= 2
+    )
     return {
         "rows": rows,
         "history_points": history_points,
@@ -370,8 +390,8 @@ def diagnostics_data(db: Session) -> dict[str, Any]:
     }
 
 
-def dashboard_data(db: Session) -> dict[str, Any]:
-    rows = latest_rows(db)
+def dashboard_data(db: Session, season: str) -> dict[str, Any]:
+    rows = latest_rows(db, season)
     snapshots = [row["snapshot"] for row in rows]
 
     # Only players with a value can be ranked. Padding these lists with
@@ -441,7 +461,7 @@ def dashboard_data(db: Session) -> dict[str, Any]:
         "low_rotation": low_rotation[:10],
         "position_averages": position_averages,
         "latest_run": latest_run(db),
-        "latest_time": latest_snapshot_time(db),
+        "latest_time": latest_snapshot_time(db, season),
         "schema_changes": recent_schema_changes(db, 10),
         "comparison_label": comparison_label,
         "top_risers": top_risers,

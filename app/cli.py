@@ -42,9 +42,9 @@ def command_refresh(scheduled: bool, force: bool) -> int:
     return 0
 
 
-def command_import_history(directory: str) -> int:
+def command_import_history(directory: str, season: str) -> int:
     with SessionLocal() as db:
-        result = import_history_directory(db, directory)
+        result = import_history_directory(db, directory, season)
     print("History import: " + ", ".join(f"{key}={value}" for key, value in result.items()))
     return 0
 
@@ -61,6 +61,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     history = subparsers.add_parser("import-history")
     history.add_argument("--directory", required=True)
+    history.add_argument(
+        "--season",
+        required=True,
+        help="Season the files describe, e.g. 2025/26. Never inferred: an "
+        "untagged import mixes with the current season.",
+    )
 
     return parser
 
@@ -72,7 +78,7 @@ def main() -> int:
     if args.command == "refresh":
         return command_refresh(args.scheduled, args.force)
     if args.command == "import-history":
-        return command_import_history(args.directory)
+        return command_import_history(args.directory, args.season)
     return 2
 
 

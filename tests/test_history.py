@@ -65,7 +65,7 @@ def test_historical_deltas(tmp_path):
         ))
         db.commit()
 
-        rows = latest_rows(db)
+        rows = latest_rows(db, "2026/27")
         assert rows[0]["history"]["7D"]["delta_value"] == 1.0
         assert rows[0]["history"]["7D"]["delta_ownership"] == 1.0
 
@@ -81,8 +81,8 @@ def test_legacy_history_import_is_idempotent(tmp_path):
         db.add(Team(id=1, name="Test", short_name="TST", updated_at=now))
         db.add(Player(id=1, first_name="Ada", second_name="Example", web_name="Ada", team_id=1, position="Midfielder", position_short="MID", status="a", news="", updated_at=now, raw={}))
         db.commit()
-        first = import_history_directory(db, tmp_path)
-        second = import_history_directory(db, tmp_path)
+        first = import_history_directory(db, tmp_path, season="2025/26")
+        second = import_history_directory(db, tmp_path, season="2025/26")
         assert first["imported"] == 1
         assert second["imported"] == 0
         assert db.scalar(select(PlayerSnapshot).where(PlayerSnapshot.player_id == 1)) is not None

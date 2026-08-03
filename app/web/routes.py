@@ -182,7 +182,7 @@ def dashboard(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    data = dashboard_data(db)
+    data = dashboard_data(db, settings.current_season)
     # Privacy by exclusion: personal data is never placed in a context an
     # anonymous visitor can receive, rather than being masked at render time.
     data["authenticated"] = is_authenticated(request)
@@ -227,6 +227,7 @@ def spreadsheet(
     status: str | None = None,
     sort: str = "reliable_value",
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     views = {
         "all": ("All Players", "The complete player market with every core rating.", "reliable_value"),
@@ -245,7 +246,7 @@ def spreadsheet(
                 "min_reliable_percentile": _optional_number(min_reliable_percentile, float),
                 "min_forward_percentile": _optional_number(min_forward_percentile, float)}
     effective_sort = sort if sort != "reliable_value" or view == "all" else views[view][2]
-    rows = filtered_players(db, position=position or None, status=status, sort=effective_sort, **values)
+    rows = filtered_players(db, season=settings.current_season, position=position or None, status=status, sort=effective_sort, **values)
     if view == "transfers":
         rows = [row for row in rows
                 if row["snapshot"].availability_factor > 0
@@ -265,11 +266,12 @@ def player_detail(
     request: Request,
     player_id: int,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     player = db.get(Player, player_id)
     if player is None:
         raise HTTPException(404, "Player not found")
-    history = player_history(db, player_id)
+    history = player_history(db, player_id, settings.current_season)
     if not history:
         raise HTTPException(404, "No player history available")
     return templates.TemplateResponse(
@@ -280,7 +282,7 @@ def player_detail(
             "current": history[-1],
             "history": history,
             "comparison_options": [
-                row for row in filtered_players(db, sort="reliable_value")
+                row for row in filtered_players(db, season=settings.current_season, sort="reliable_value")
                 if row["player"].id != player_id
             ],
         },
@@ -291,8 +293,9 @@ def player_detail(
 def forward_page(
     request: Request,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
-    rows = filtered_players(db, sort="forward_value")
+    rows = filtered_players(db, season=settings.current_season, sort="forward_value")
     return templates.TemplateResponse(
         request=request,
         name="metric_table.html",
@@ -311,8 +314,9 @@ def forward_page(
 def rotation_page(
     request: Request,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
-    rows = filtered_players(db, sort="rotation_risk")
+    rows = filtered_players(db, season=settings.current_season, sort="rotation_risk")
     return templates.TemplateResponse(
         request=request,
         name="metric_table.html",
@@ -338,8 +342,9 @@ def transfer_finder(
     min_forward_percentile: float | None = None,
     max_ownership: float | None = None,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
-    rows = filtered_players(db, position=position, max_price=max_price, max_rotation=max_rotation, sort="forward_value")
+    rows = filtered_players(db, season=settings.current_season, position=position, max_price=max_price, max_rotation=max_rotation, sort="forward_value")
     candidates = []
     for row in rows:
         snapshot = row["snapshot"]
@@ -369,8 +374,9 @@ def differentials(
     position: str | None = None,
     max_price: float | None = None,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
-    rows = build_player_intelligence(latest_rows(db))
+    rows = build_player_intelligence(latest_rows(db, settings.current_season))
     rows = [row for row in rows if row["snapshot"].ownership <= ownership]
     if position:
         rows = [row for row in rows if row["player"].position_short == position]
@@ -389,8 +395,8 @@ def differentials(
 
 
 @router.get("/transfer-market", response_class=HTMLResponse)
-def transfer_market(request: Request, db: Session = Depends(get_db)):
-    rows = build_player_intelligence(latest_rows(db))
+def transfer_market(request: Request, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
+    rows = build_player_intelligence(latest_rows(db, settings.current_season))
     def totals(row):
         raw = row["snapshot"].raw or {}
         return int(raw.get("transfers_in_event") or 0), int(raw.get("transfers_out_event") or 0)
@@ -407,9 +413,10 @@ def templates_page(
     request: Request,
     budget: str = "100",
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     budget_value = max(50.0, min(100.0, _optional_number(budget, float) or 100.0))
-    rows = latest_rows(db)
+    rows = latest_rows(db, settings.current_season)
     summary = {"templates": [], "checks": None, "activates_when": None, "error": None}
     if rows:
         summary = template_summaries(rows, budget_value)
@@ -433,8 +440,8 @@ def templates_page(
 
 
 @router.get("/diagnostics", response_class=HTMLResponse)
-def diagnostics(request: Request, db: Session = Depends(get_db)):
-    data = diagnostics_data(db)
+def diagnostics(request: Request, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
+    data = diagnostics_data(db, settings.current_season)
     return templates.TemplateResponse(request=request, name="diagnostics.html", context=data)
 
 
@@ -480,7 +487,7 @@ def recommendation_page(
     checks = None
     activates_when = None
     try:
-        recommendation = recommend_team_cached(latest_rows(db), budget_value, strategy)
+        recommendation = recommend_team_cached(latest_rows(db, settings.current_season), budget_value, strategy)
     except NotReadyError as exc:
         # Not an error: the inputs simply cannot support a recommendation yet.
         checks = exc.checks
@@ -500,12 +507,13 @@ def movers_page(
     request: Request,
     period: str = "7D",
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     if period not in {"1D", "7D", "30D"}:
         period = "7D"
     # A single source of movement classification, so the headline lists cannot
     # disagree with the per-metric tables below them.
-    movers = movers_data(db, period)
+    movers = movers_data(db, settings.current_season, period)
     return templates.TemplateResponse(
         request=request,
         name="movers.html",
@@ -524,8 +532,9 @@ def compare(
     request: Request,
     ids: Annotated[list[int] | None, Query()] = None,
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
-    all_rows = filtered_players(db, sort="reliable_value")
+    all_rows = filtered_players(db, season=settings.current_season, sort="reliable_value")
     selected_ids = (ids or [])[:5]
     selected = [
         row for row in all_rows
@@ -555,9 +564,9 @@ def schema_page(
 
 
 @router.get("/exports/current.csv")
-def export_csv(db: Session = Depends(get_db)):
+def export_csv(db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
     return Response(
-        csv_bytes(db),
+        csv_bytes(db, settings.current_season),
         media_type="text/csv",
         headers={
             "Content-Disposition": (
@@ -568,9 +577,9 @@ def export_csv(db: Session = Depends(get_db)):
 
 
 @router.get("/exports/current.xlsx")
-def export_xlsx(db: Session = Depends(get_db)):
+def export_xlsx(db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
     return Response(
-        xlsx_bytes(db),
+        xlsx_bytes(db, settings.current_season),
         media_type=(
             "application/vnd.openxmlformats-officedocument."
             "spreadsheetml.sheet"

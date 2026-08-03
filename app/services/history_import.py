@@ -32,7 +32,20 @@ def _timestamp(row: dict[str, Any], path: Path) -> datetime:
     return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
 
 
-def import_history_directory(db: Session, directory: str | Path) -> dict[str, int]:
+def import_history_directory(
+    db: Session,
+    directory: str | Path,
+    season: str,
+) -> dict[str, int]:
+    """Import historical snapshot CSVs, tagged with the season they describe.
+
+    The season is required and never inferred. These files usually hold
+    previous-season data, and an untagged import lands in the same table as the
+    current season, where a value delta across the boundary would read as player
+    movement rather than a season rollover.
+    """
+    if not season:
+        raise ValueError("A season is required to import historical snapshots.")
     root = Path(directory)
     if not root.is_dir():
         raise FileNotFoundError(f"History directory does not exist: {root}")
@@ -69,6 +82,7 @@ def import_history_directory(db: Session, directory: str | Path) -> dict[str, in
                 points = safe_int(_value(row, "total_points", "points"))
                 snapshot = PlayerSnapshot(
                     player_id=player_id, refresh_run_id=run.id, captured_at=captured,
+                    season=season,
                     price=price, total_points=points,
                     minutes=safe_int(_value(row, "minutes")), starts=safe_int(_value(row, "starts")),
                     team_matches=safe_int(_value(row, "team_matches", "matches")),
