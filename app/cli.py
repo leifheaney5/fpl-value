@@ -88,7 +88,15 @@ def command_evaluate(
     if candidates:
         from app.models.candidates import GradientBoostedCandidate
 
-        trainables.append(GradientBoostedCandidate())
+        # Both losses are scored: squared error wins RMSE, absolute error wins
+        # MAE, and which matters depends on whether a number or a ranking is
+        # being shown. Measuring both is cheaper than arguing about it.
+        trainables.append(
+            GradientBoostedCandidate(loss="absolute_error", name="gbdt_absolute")
+        )
+        trainables.append(
+            GradientBoostedCandidate(loss="squared_error", name="gbdt_squared")
+        )
 
     with SessionLocal() as db:
         report = walk_forward(

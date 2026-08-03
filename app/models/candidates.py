@@ -48,9 +48,25 @@ class GradientBoostedCandidate:
 
     name = "gradient_boosted"
 
-    def __init__(self, seed: int = 17, max_iter: int = 200) -> None:
+    def __init__(
+        self,
+        seed: int = 17,
+        max_iter: int = 200,
+        loss: str = "absolute_error",
+        name: str | None = None,
+    ) -> None:
+        # Squared error is the sklearn default and it is the wrong objective
+        # here. FPL points are heavily right-skewed -- most returns are 0-2 and
+        # a few are 15+ -- so a squared-error fit chases the tail and gives up
+        # median accuracy and ranking, which is what the interface actually
+        # uses. Measured: squared error scored the best RMSE of any model in
+        # both information states while scoring the worst preseason MAE and
+        # Spearman.
         self.seed = seed
         self.max_iter = max_iter
+        self.loss = loss
+        if name is not None:
+            self.name = name
         self._model = None
         self.n_inputs = 0
 
@@ -65,6 +81,7 @@ class GradientBoostedCandidate:
         self._model = HistGradientBoostingRegressor(
             random_state=self.seed,
             max_iter=self.max_iter,
+            loss=self.loss,
             early_stopping=False,
         )
         self._model.fit(features, list(dataset.y))
