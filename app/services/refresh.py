@@ -427,6 +427,7 @@ def refresh_data(
             if player is None:
                 player = Player(
                     id=player_id,
+                    code=safe_int(item.get("code")) or None,
                     first_name=str(item.get("first_name") or ""),
                     second_name=str(item.get("second_name") or ""),
                     web_name=str(item.get("web_name") or ""),
@@ -440,6 +441,7 @@ def refresh_data(
                 )
                 db.add(player)
             else:
+                player.code = safe_int(item.get("code")) or None
                 player.first_name = str(item.get("first_name") or "")
                 player.second_name = str(item.get("second_name") or "")
                 player.web_name = str(item.get("web_name") or "")

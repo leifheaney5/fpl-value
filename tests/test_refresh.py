@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.config import Settings
 from app.db.base import Base
-from app.db.models import Gameweek, PlayerSnapshot, RefreshRun, SchemaChange
+from app.db.models import Gameweek, Player, PlayerSnapshot, RefreshRun, SchemaChange
 from app.services.refresh import _update_schema, refresh_data, utcnow
 
 from fakes import CarryOverPreseasonClient, FakeClient, PreseasonClient
@@ -69,6 +69,28 @@ def test_preseason_refresh_stores_null_metrics_rather_than_zero(tmp_path):
         # And the run explains the ranking gap rather than leaving it implicit.
         assert run.details["ranked_count"] == 0
         assert sum(run.details["ranking_exclusions"].values()) == 1
+
+
+def test_refresh_stores_the_stable_player_code(tmp_path):
+    """Element ids move between seasons; the code is what joins history."""
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'code.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(engine, expire_on_commit=False)
+    settings = Settings(database_url=f"sqlite:///{tmp_path / 'code.db'}")
+
+    class CodedClient(FakeClient):
+        def bootstrap(self):
+            payload = super().bootstrap()
+            payload["elements"][0]["code"] = 154561
+            return payload
+
+    with Session() as db:
+        refresh_data(db, settings, CodedClient())
+        player = db.scalar(select(Player))
+        assert player.code == 154561
 
 
 def test_carried_over_minutes_do_not_become_current_season_rates(tmp_path):

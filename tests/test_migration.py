@@ -95,6 +95,25 @@ def test_derived_start_flag_is_not_nullable(tmp_path):
     assert columns["starts"]["nullable"] is True
 
 
+def test_players_carry_a_stable_cross_season_code(tmp_path):
+    """FPL reuses element ids between seasons; `code` is what does not move.
+
+    Verified 2026-08-03: element id 1 is Shkodran Mustafi in 2019-20 and
+    Fabio Vieira in 2024-25. Archive rows must resolve through `code`.
+    """
+    url = f"sqlite:///{tmp_path / 'code.db'}"
+    command.upgrade(_config(url), "head")
+    inspector = sa.inspect(sa.create_engine(url))
+    columns = {c["name"]: c for c in inspector.get_columns("players")}
+    assert "code" in columns
+    assert columns["code"]["nullable"] is True
+    constraints = {
+        tuple(c["column_names"])
+        for c in inspector.get_unique_constraints("players")
+    }
+    assert ("code",) in constraints
+
+
 def test_migrated_schema_matches_the_models(tmp_path):
     """Migrations and models must agree.
 

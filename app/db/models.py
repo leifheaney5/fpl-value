@@ -35,8 +35,13 @@ class Team(Base):
 
 class Player(Base):
     __tablename__ = "players"
+    __table_args__ = (UniqueConstraint("code", name="uq_player_code"),)
 
+    # `id` is the FPL element id, which is re-assigned every season. `code` is
+    # the stable player identifier and is the only safe key for joining data
+    # across seasons.
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[int | None] = mapped_column(Integer, nullable=True)
     first_name: Mapped[str] = mapped_column(String(100), default="")
     second_name: Mapped[str] = mapped_column(String(100), default="")
     web_name: Mapped[str] = mapped_column(String(100), nullable=False)

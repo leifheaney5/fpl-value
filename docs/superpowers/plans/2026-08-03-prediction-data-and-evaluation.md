@@ -547,6 +547,33 @@ git commit -m "Map FPL archive columns across its four schema eras"
 
 ---
 
+### Task 2a: Stable player identity (plan correction, discovered during Task 2)
+
+**Why this task exists.** The plan originally assumed archive rows could be
+keyed on `element` straight onto `Player.id`. That is wrong. FPL re-assigns
+element IDs every season: verified on 2026-08-03, `id=1` is Shkodran Mustafi in
+2019-20 and Fábio Vieira in 2024-25. Ingesting on `element` would have
+attributed ten seasons of history to the wrong players, silently.
+
+`code` is the stable FPL player identifier. It is present on every bootstrap
+element (567 unique codes for 567 players) and in each archive season's
+`players_raw.csv`. Resolution is therefore
+`archive element → season players_raw code → current Player.code`.
+
+**Files:**
+- Create: `alembic/versions/0006_player_code.py`
+- Modify: `app/db/models.py` (`Player`), `app/services/refresh.py`
+- Test: `tests/test_migration.py`, `tests/test_refresh.py`
+
+**Interfaces:**
+- Produces: `Player.code: int | None`, unique, indexed.
+
+- [ ] **Step 1:** Add a migration adding `players.code` as a nullable indexed integer with a unique constraint, and the matching model column.
+- [ ] **Step 2:** Populate it in `refresh_data` from the bootstrap element's `code`.
+- [ ] **Step 3:** Test that a refresh stores codes and that they are unique.
+
+---
+
 ### Task 3: Archive ingestion
 
 **Files:**
