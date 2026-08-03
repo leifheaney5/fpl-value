@@ -78,10 +78,17 @@ def command_evaluate(
     output: str | None,
     limit: int | None,
     min_train_seasons: int,
+    candidates: bool = False,
 ) -> int:
     import json
 
     from app.models.evaluation import walk_forward
+
+    trainables = []
+    if candidates:
+        from app.models.candidates import GradientBoostedCandidate
+
+        trainables.append(GradientBoostedCandidate())
 
     with SessionLocal() as db:
         report = walk_forward(
@@ -89,6 +96,7 @@ def command_evaluate(
             seasons=seasons,
             min_train_seasons=min_train_seasons,
             limit_per_fold=limit,
+            trainables=trainables,
         )
 
     payload = report.as_dict()
@@ -155,6 +163,10 @@ def build_parser() -> argparse.ArgumentParser:
              "not a valid evaluation.",
     )
     evaluate.add_argument("--min-train-seasons", type=int, default=1)
+    evaluate.add_argument(
+        "--candidates", action="store_true",
+        help="Also fit and score trainable candidates on each fold.",
+    )
 
     return parser
 
@@ -171,7 +183,8 @@ def main() -> int:
         return command_import_archive(args.seasons)
     if args.command == "evaluate":
         return command_evaluate(
-            args.seasons, args.output, args.limit, args.min_train_seasons
+            args.seasons, args.output, args.limit, args.min_train_seasons,
+            args.candidates,
         )
     return 2
 

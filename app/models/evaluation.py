@@ -16,7 +16,7 @@ import logging
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Iterable, Sequence
+from typing import TYPE_CHECKING, Any, Iterable, Sequence
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,6 +25,10 @@ from app.db.models import GameweekHistory
 from app.models.baselines import BASELINES, Baseline
 from app.models.features import InformationState, build_features
 from app.models.metrics import summarise
+
+if TYPE_CHECKING:  # pragma: no cover
+    from app.models.candidates import TrainableModel
+    from app.models.dataset import Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -193,12 +197,68 @@ def _aggregate(folds: Sequence[FoldResult]) -> dict[str, dict[str, float | None]
     return result
 
 
+def evaluate_fold_from_dataset(
+    dataset: "Dataset",
+    train_seasons: Sequence[str],
+    test_season: str,
+    models: Sequence[Baseline] = BASELINES,
+    trainables: Sequence["TrainableModel"] = (),
+) -> FoldResult:
+    """Score baselines and freshly-fitted candidates on one held-out season.
+
+    Trainables are fitted on the training slice only. That is the whole point of
+    the expanding window: a candidate never sees the season it is scored on.
+    """
+    from app.models.features import FeatureVector
+
+    train = dataset.slice_seasons(list(train_seasons))
+    test = dataset.slice_seasons([test_season])
+
+    predictions: dict[str, list[float]] = {}
+
+    # Baselines read a FeatureVector, so rebuild the lightweight wrapper around
+    # the already-materialised arrays rather than recomputing features.
+    names = dataset.feature_names
+    vectors = [
+        FeatureVector(
+            values=dict(zip(names, row)),
+            mask={name: bool(flag) for name, flag in zip(names, flags)},
+            as_of=None,
+            version="materialised",
+        )
+        for row, flags in zip(test.x, test.mask)
+    ]
+    for model in models:
+        predictions[model.name] = [float(model.predict(v)) for v in vectors]
+
+    for candidate in trainables:
+        try:
+            candidate.fit(train)
+            predictions[candidate.name] = candidate.predict_batch(test.x, test.mask)
+        except ValueError as exc:
+            logger.warning(
+                "candidate %s could not be fitted for %s: %s",
+                candidate.name, test_season, exc,
+            )
+
+    return FoldResult(
+        train_seasons=list(train_seasons),
+        test_season=test_season,
+        information_state=dataset.information_state,
+        n_examples=len(test.y),
+        scores={
+            name: summarise(test.y, values) for name, values in predictions.items()
+        },
+    )
+
+
 def walk_forward(
     db: Session,
     seasons: Sequence[str] | None = None,
     models: Sequence[Baseline] = BASELINES,
     min_train_seasons: int = 1,
     limit_per_fold: int | None = None,
+    trainables: Sequence["TrainableModel"] = (),
 ) -> EvaluationReport:
     available = [
         season
@@ -207,19 +267,42 @@ def walk_forward(
     target_seasons = season_order(seasons or available)
     folds: list[FoldResult] = []
 
-    for train_seasons, test_season in walk_forward_folds(
-        target_seasons, min_train_seasons
-    ):
+    if trainables:
+        # Materialise features once per information state, then slice per fold.
+        # Rebuilding them per fold is what made the baseline run take twenty
+        # minutes, and training needs many more passes than that.
+        from app.models.dataset import build_dataset
+
         for state in INFORMATION_STATES:
-            logger.info(
-                "evaluate fold train=%s test=%s state=%s",
-                train_seasons, test_season, state,
+            dataset = build_dataset(
+                db, seasons=target_seasons, information_state=state
             )
-            folds.append(
-                evaluate_fold(
-                    db, train_seasons, test_season, state, models, limit_per_fold
+            for train_seasons, test_season in walk_forward_folds(
+                target_seasons, min_train_seasons
+            ):
+                logger.info(
+                    "evaluate fold train=%s test=%s state=%s",
+                    train_seasons, test_season, state,
                 )
-            )
+                folds.append(
+                    evaluate_fold_from_dataset(
+                        dataset, train_seasons, test_season, models, trainables
+                    )
+                )
+    else:
+        for train_seasons, test_season in walk_forward_folds(
+            target_seasons, min_train_seasons
+        ):
+            for state in INFORMATION_STATES:
+                logger.info(
+                    "evaluate fold train=%s test=%s state=%s",
+                    train_seasons, test_season, state,
+                )
+                folds.append(
+                    evaluate_fold(
+                        db, train_seasons, test_season, state, models, limit_per_fold
+                    )
+                )
 
     return EvaluationReport(
         seasons=target_seasons,
