@@ -73,6 +73,49 @@ def command_import_archive(seasons: list[str] | None) -> int:
     return 0
 
 
+def command_evaluate(
+    seasons: list[str] | None,
+    output: str | None,
+    limit: int | None,
+    min_train_seasons: int,
+) -> int:
+    import json
+
+    from app.models.evaluation import walk_forward
+
+    with SessionLocal() as db:
+        report = walk_forward(
+            db,
+            seasons=seasons,
+            min_train_seasons=min_train_seasons,
+            limit_per_fold=limit,
+        )
+
+    payload = report.as_dict()
+    if output:
+        with open(output, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2)
+
+    print(f"seasons: {', '.join(payload['seasons'])}")
+    print(f"folds:   {len(payload['folds'])}")
+    print()
+    header = f"{'model':26} {'state':11} {'n':>8} {'MAE':>8} {'RMSE':>8} {'Spearman':>9}"
+    print(header)
+    print("-" * len(header))
+
+    def _fmt(value):
+        return "     n/a" if value is None else f"{value:8.4f}"
+
+    for key in sorted(payload["by_model"]):
+        name, _, state = key.partition("::")
+        scores = payload["by_model"][key]
+        print(
+            f"{name:26} {state:11} {scores['n']:>8} "
+            f"{_fmt(scores['mae'])} {_fmt(scores['rmse'])} {_fmt(scores['spearman'])}"
+        )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="FPL Value Studio CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -100,6 +143,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Archive directory such as 2024-25. Repeatable. Defaults to all.",
     )
 
+    evaluate = subparsers.add_parser("evaluate")
+    evaluate.add_argument(
+        "--season", action="append", dest="seasons",
+        help="Season label such as 2024/25. Repeatable. Defaults to all stored.",
+    )
+    evaluate.add_argument("--output", help="Write the full report as JSON here.")
+    evaluate.add_argument(
+        "--limit", type=int, default=None,
+        help="Cap examples per fold. For a quick check only; a capped run is "
+             "not a valid evaluation.",
+    )
+    evaluate.add_argument("--min-train-seasons", type=int, default=1)
+
     return parser
 
 
@@ -113,6 +169,10 @@ def main() -> int:
         return command_import_history(args.directory, args.season)
     if args.command == "import-archive":
         return command_import_archive(args.seasons)
+    if args.command == "evaluate":
+        return command_evaluate(
+            args.seasons, args.output, args.limit, args.min_train_seasons
+        )
     return 2
 
 
