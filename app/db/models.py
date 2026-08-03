@@ -327,25 +327,67 @@ class GameweekHistory(Base):
             "player_id", "season", "gameweek", name="uq_player_season_gameweek"
         ),
         Index("ix_gameweek_player_event", "player_id", "gameweek"),
+        Index("ix_gameweek_history_season_gw", "season", "gameweek"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), nullable=False)
     season: Mapped[str] = mapped_column(String(9), nullable=False, default="2026/27")
     gameweek: Mapped[int] = mapped_column(Integer, nullable=False)
+    # "api" for rows collected from the live FPL endpoints, "archive" for rows
+    # imported from the community historical dataset.
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="api")
     opponent: Mapped[str] = mapped_column(String(100), default="")
+    opponent_team_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_home: Mapped[bool] = mapped_column(Boolean, default=False)
+    fixture_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    kickoff_time: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    position: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    team_name: Mapped[str | None] = mapped_column(String(60), nullable=True)
+
     minutes: Mapped[int] = mapped_column(Integer, default=0)
     started: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Null for the six archive seasons that never recorded starts. When that is
+    # the case `started` is inferred from a minutes threshold and the inference
+    # is flagged below, so evaluation can measure whether those seasons help.
+    starts: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    started_is_derived: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+
     points: Mapped[int] = mapped_column(Integer, default=0)
     goals: Mapped[int] = mapped_column(Integer, default=0)
     assists: Mapped[int] = mapped_column(Integer, default=0)
     clean_sheets: Mapped[int] = mapped_column(Integer, default=0)
+    goals_conceded: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    saves: Mapped[int | None] = mapped_column(Integer, nullable=True)
     bonus: Mapped[int] = mapped_column(Integer, default=0)
+    bps: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    yellow_cards: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    red_cards: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    own_goals: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    penalties_missed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    penalties_saved: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     expected_goals: Mapped[float] = mapped_column(Float, default=0.0)
     expected_assists: Mapped[float] = mapped_column(Float, default=0.0)
+    expected_goal_involvements: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    expected_goals_conceded: Mapped[float | None] = mapped_column(Float, nullable=True)
+    influence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    creativity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    threat: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     price: Mapped[float] = mapped_column(Float, default=0.0)
     ownership: Mapped[float] = mapped_column(Float, default=0.0)
+    selected: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    transfers_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    transfers_out: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    transfers_balance: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     raw: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 

@@ -66,6 +66,35 @@ def test_gameweek_history_is_unique_per_season(tmp_path):
     assert ("player_id", "gameweek") not in columns
 
 
+ARCHIVE_COLUMNS = {
+    "starts", "started_is_derived", "source", "fixture_id", "kickoff_time",
+    "opponent_team_id", "saves", "bps", "yellow_cards", "red_cards", "own_goals",
+    "penalties_missed", "penalties_saved", "goals_conceded",
+    "expected_goal_involvements", "expected_goals_conceded", "influence",
+    "creativity", "threat", "transfers_in", "transfers_out", "transfers_balance",
+    "selected", "position", "team_name",
+}
+
+
+def test_gameweek_history_carries_archive_detail(tmp_path):
+    url = f"sqlite:///{tmp_path / 'archive.db'}"
+    command.upgrade(_config(url), "head")
+    inspector = sa.inspect(sa.create_engine(url))
+    columns = {c["name"] for c in inspector.get_columns("gameweek_history")}
+    missing = ARCHIVE_COLUMNS - columns
+    assert not missing, f"missing archive columns: {sorted(missing)}"
+
+
+def test_derived_start_flag_is_not_nullable(tmp_path):
+    url = f"sqlite:///{tmp_path / 'derived.db'}"
+    command.upgrade(_config(url), "head")
+    inspector = sa.inspect(sa.create_engine(url))
+    columns = {c["name"]: c for c in inspector.get_columns("gameweek_history")}
+    assert columns["started_is_derived"]["nullable"] is False
+    # starts itself IS nullable: six of ten archive seasons never recorded it.
+    assert columns["starts"]["nullable"] is True
+
+
 def test_migrated_schema_matches_the_models(tmp_path):
     """Migrations and models must agree.
 
