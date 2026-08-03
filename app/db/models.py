@@ -408,6 +408,51 @@ class GameweekHistory(Base):
     raw: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
+class Prediction(Base):
+    """A stored projection, with the provenance needed to audit it later.
+
+    Every value column is nullable. A model that cannot produce a distribution
+    records nulls rather than inventing one, in keeping with the rule that an
+    absent measurement is never a zero.
+    """
+
+    __tablename__ = "predictions"
+    __table_args__ = (
+        UniqueConstraint(
+            "player_code", "season", "gameweek", "horizon", "model_version",
+            name="uq_prediction_player_gameweek_model",
+        ),
+        Index("ix_predictions_season_gameweek", "season", "gameweek"),
+        Index("ix_predictions_player_code", "player_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    player_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    player_id: Mapped[int | None] = mapped_column(
+        ForeignKey("players.id"), nullable=True
+    )
+    season: Mapped[str] = mapped_column(String(9), nullable=False)
+    gameweek: Mapped[int] = mapped_column(Integer, nullable=False)
+    fixture_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    horizon: Mapped[str] = mapped_column(String(20), nullable=False, default="next")
+
+    expected_points: Mapped[float | None] = mapped_column(Float, nullable=True)
+    floor: Mapped[float | None] = mapped_column(Float, nullable=True)
+    median: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ceiling: Mapped[float | None] = mapped_column(Float, nullable=True)
+    expected_minutes: Mapped[float | None] = mapped_column(Float, nullable=True)
+    start_probability: Mapped[float | None] = mapped_column(Float, nullable=True)
+    confidence: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    model_name: Mapped[str] = mapped_column(String(60), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    feature_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    information_state: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
 

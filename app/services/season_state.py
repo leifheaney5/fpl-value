@@ -317,6 +317,21 @@ FEATURES: dict[str, FeatureRequirement] = {
             "a recommendation without being one."
         ),
     ),
+    "predictions": FeatureRequirement(
+        required_inputs=("model_available", "history_rows"),
+        optional_inputs=("player_count",),
+        supported_states=(SeasonState.PRESEASON,) + IN_SEASON_STATES,
+        minimum_sample={"model_available": 1, "history_rows": 1},
+        activates_when=(
+            "Model predictions activate once a trained artefact is available "
+            "that has cleared the evaluation gate in docs/MODEL_EVALUATION.md."
+        ),
+        fallback=(
+            "The transparent projected_points_5 heuristic remains in use. It is "
+            "the strongest in-season baseline measured, so this is a considered "
+            "fallback rather than a stopgap."
+        ),
+    ),
     "differentials": FeatureRequirement(
         required_inputs=("projections_available",),
         supported_states=IN_SEASON_STATES,

@@ -22,10 +22,24 @@ simply the fully-masked case.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Iterable
 
 VERSION = "1.0.0"
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    """Normalise a timestamp to UTC before comparing.
+
+    SQLite returns naive datetimes and PostgreSQL returns aware ones, so
+    comparing a stored kickoff time against an aware ``as_of`` raises. Naive
+    values are treated as UTC, which is what the ingestion pipeline writes.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 class InformationState:
@@ -255,13 +269,16 @@ def build_features(
     values: dict[str, float] = {}
     mask: dict[str, bool] = {}
 
-    # Leakage filter. First, unconditionally, before anything else.
+    # Leakage filter. First, unconditionally, before anything else. Both sides
+    # are normalised to UTC because SQLite returns naive timestamps and
+    # PostgreSQL returns aware ones, and comparing the two raises.
     target_season = getattr(target, "season", None)
+    cutoff = _as_utc(as_of)
     past = [
         row
         for row in history
-        if getattr(row, "kickoff_time", None) is not None
-        and row.kickoff_time < as_of
+        if _as_utc(getattr(row, "kickoff_time", None)) is not None
+        and _as_utc(row.kickoff_time) < cutoff
     ]
 
     current = _Accumulator("cur")

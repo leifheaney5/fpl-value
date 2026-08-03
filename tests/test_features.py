@@ -68,6 +68,27 @@ def test_a_row_exactly_at_the_cutoff_is_excluded():
     assert same.values == empty.values
 
 
+def test_naive_and_aware_timestamps_compare_without_raising():
+    """SQLite returns naive datetimes; PostgreSQL returns aware ones.
+
+    Comparing the two raises, which crashed prediction on the serving path
+    where `as_of` is an aware `datetime.now(timezone.utc)` and the stored
+    kickoff times came back naive from SQLite.
+    """
+    naive = _row(3)
+    naive.kickoff_time = naive.kickoff_time.replace(tzinfo=None)
+
+    result = build_features(
+        [naive], _target(), NOW, InformationState.IN_SEASON
+    )
+    assert result.values["cur_matches"] == 1.0
+
+    aware_history = build_features(
+        [_row(3)], _target(), NOW, InformationState.IN_SEASON
+    )
+    assert result.values == aware_history.values
+
+
 def test_rows_without_a_kickoff_time_are_excluded():
     """A row whose position in time is unknown cannot be proven to be past."""
     undated = [_row(3, kickoff_time=None)]
