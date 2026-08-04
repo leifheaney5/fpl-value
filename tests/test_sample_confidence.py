@@ -47,3 +47,49 @@ def test_confidence_rises_monotonically_with_minutes():
     levels = [sample_confidence(_snap(m))[0] for m in (0, 90, 500, 1200, 2500, 3400)]
     ranks = [order[level] for level in levels]
     assert ranks == sorted(ranks), levels
+
+
+def test_a_cameo_produces_no_per_90_rate(tmp_path):
+    """One point in a one-minute appearance is not a rate of 90.00 per 90.
+
+    Measured over nine archive seasons, unfloored points-per-90 ranks players
+    at Spearman 0.027 against the next five gameweeks -- indistinguishable from
+    noise -- because the top of the column is entirely cameos. A floor lifts it
+    to 0.23-0.29. See docs/RANKING_EVALUATION.md.
+    """
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import sessionmaker
+
+    from app.config import Settings
+    from app.db.base import Base
+    from app.db.models import PlayerSnapshot
+    from app.services.refresh import P90_MIN_MINUTES, refresh_data
+
+    import sys
+    sys.path.insert(0, "tests")
+    from fakes import CarryOverPreseasonClient
+
+    class CameoClient(CarryOverPreseasonClient):
+        def bootstrap(self):
+            payload = super().bootstrap()
+            payload["elements"][0].update(
+                {"total_points": 1, "minutes": 1, "starts": 0}
+            )
+            return payload
+
+    url = f"sqlite:///{tmp_path / 'cameo.db'}"
+    engine = create_engine(url, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(engine, expire_on_commit=False)
+    settings = Settings(database_url=url, current_season="2026/27")
+
+    with Session() as db:
+        refresh_data(db, settings, CameoClient())
+        snapshot = db.scalar(select(PlayerSnapshot))
+
+        assert snapshot.minutes == 1
+        assert snapshot.points_per_90 is None, (
+            "a one-minute sample must not produce a per-90 rate"
+        )
+        reason = snapshot.metric_status["points_per_90"]["reason"]
+        assert str(P90_MIN_MINUTES) in reason, reason

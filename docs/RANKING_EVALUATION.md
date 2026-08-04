@@ -26,6 +26,7 @@ measured differently from `docs/MODEL_EVALUATION.md`:
 | Candidate | Spearman | Seasons won |
 | --- | --- | --- |
 | **points_per_game** | **0.7368** | **8 / 9** |
+| reliable_value_approx *(current default sort)* | 0.7252 | 0 / 9 |
 | minutes_mean *(control)* | 0.7229 | 1 / 9 |
 | points_per_million | 0.7213 | 0 / 9 |
 | points_per_game_shrunk | 0.7118 | 0 / 9 |
@@ -34,6 +35,9 @@ measured differently from `docs/MODEL_EVALUATION.md`:
 | composite_with_form | 0.5906 | 0 / 9 |
 | composite_quality_security | 0.5647 | 0 / 9 |
 | minutes_weighted_points | 0.5594 | 0 / 9 |
+| points_per_90_min1800 | 0.2911 | 0 / 9 |
+| points_per_90_min900 | 0.2715 | 0 / 9 |
+| points_per_90_min270 | 0.2258 | 0 / 9 |
 | points_per_90 | 0.0270 | 0 / 9 |
 
 ## What this settles
@@ -55,6 +59,21 @@ all averaged 0.1 minutes: one point in a one-minute cameo is a rate of 90.00
 per 90. 174 of 496 players averaged under 20 minutes. The column is dominated
 by cameos. It is the same defect class as the recommender audit — a rate with
 no minutes floor — surviving in the display layer.
+
+**A minutes floor rescues P/90 tenfold, and still leaves it unusable as a
+sort.** Requiring 270 minutes lifts it from 0.027 to 0.2258, 900 minutes to
+0.2715, 1800 to 0.2911 — monotonic, which confirms the cameo diagnosis. But
+even the strictest floor is under half of points-per-game. The floor is worth
+applying because a displayed 90.00 is indefensible; promoting P/90 to a sort is
+not. `P90_MIN_MINUTES = 270` is set for column coverage, not to maximise this
+correlation — a higher floor scores better and blanks more of the column.
+
+**The current default sort is not the best one.** `reliable_value_approx`
+scores 0.7252 and wins none of the nine seasons, against points-per-game at
+0.7368 winning eight. The margin is small and the approximation is imperfect —
+the deployed metric also uses this-season availability, which the archive does
+not carry — so this is evidence for changing the default, not proof. It should
+be re-measured against the real metric before the default moves.
 
 **Sample-size shrinkage makes ranking worse, not better.** Shrunk PPG (0.7118)
 loses to plain PPG (0.7368); shrunk points-per-million (0.6400) loses badly to

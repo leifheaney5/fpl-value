@@ -37,6 +37,12 @@ from app.db.models import (
 
 
 _refresh_lock = Lock()
+# Minutes required before a per-90 rate is reported at all. Three full
+# matches: enough that the extrapolation to 90 minutes is not dominated
+# by a single cameo. Chosen for coverage rather than to maximise rank
+# correlation -- higher floors score better and blank more of the column.
+P90_MIN_MINUTES = 270
+
 logger = logging.getLogger(__name__)
 
 
@@ -505,9 +511,17 @@ def refresh_data(
             value = (
                 points / price if price > 0 and (has_matches or carry_over) else None
             )
+            # A per-90 rate extrapolates from the minutes actually played, and
+            # below a few full matches that extrapolation is absurd: one point
+            # in a one-minute cameo reads as 90.00 per 90. Measured over nine
+            # archive seasons, unfloored P/90 ranks players at Spearman 0.027 --
+            # no better than noise -- and the top eight by P/90 at GW20 of
+            # 2024/25 all averaged 0.1 minutes. A floor lifts it to 0.23-0.29.
+            # See docs/RANKING_EVALUATION.md.
+            enough_for_rate = minutes >= P90_MIN_MINUTES
             p90 = (
                 points * 90.0 / minutes
-                if has_minutes or has_carry_minutes
+                if (has_minutes or has_carry_minutes) and enough_for_rate
                 else None
             )
             ppm = points / minutes if has_minutes or has_carry_minutes else None
@@ -661,7 +675,16 @@ def refresh_data(
                         "points_per_90": _status(
                             p90,
                             "points_per_90",
-                            no_matches_reason if not has_matches else no_minutes_reason,
+                            (
+                                f"Only {minutes} minutes played; a per-90 rate "
+                                f"needs at least {P90_MIN_MINUTES} to mean anything"
+                                if minutes > 0 and not enough_for_rate
+                                else (
+                                    no_matches_reason
+                                    if not has_matches
+                                    else no_minutes_reason
+                                )
+                            ),
                             has_minutes,
                             previous_season=carry_over,
                         ),
