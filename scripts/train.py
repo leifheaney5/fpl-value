@@ -146,7 +146,12 @@ def main() -> int:
 
     passed, failures = _clears_gate(args.state, scores, ceiling_spearman)
     if passed:
-        logger.info("model clears the %s gate", args.state)
+        logger.info(
+            "model clears the %s gate on the %s holdout. This is NOT a "
+            "clearance to deploy: confirm on the nine-fold walk-forward with "
+            "`python -m app.cli evaluate --candidates` first.",
+            args.state, holdout,
+        )
     else:
         logger.warning("model FAILS the %s gate: %s", args.state, "; ".join(failures))
         if not args.force:
@@ -170,8 +175,14 @@ def main() -> int:
             "holdout_season": holdout,
             "displayed_total": scores,
             "ranking_ceiling_spearman": ceiling_spearman,
-            "gate_passed": passed,
-            "gate_failures": failures,
+            # Named for what was actually checked. A single holdout is enough to
+            # refuse an obviously bad model and not enough to justify shipping a
+            # good one: on 2026-08-04 a model cleared this check comfortably and
+            # then failed the nine-fold walk-forward. Calling this `gate_passed`
+            # invited exactly that confusion.
+            "holdout_gate_passed": passed,
+            "holdout_gate_failures": failures,
+            "walk_forward_confirmed": False,
             "forced": bool(args.force and not passed),
         },
     )

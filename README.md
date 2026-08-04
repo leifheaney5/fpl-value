@@ -277,6 +277,23 @@ roughly 800MB of training stack out of the deployed image.
 its own manifest recording the model version, feature version, training seasons,
 seed and held-out scores.
 
+### Two outputs, because no single statistic does both jobs
+
+A prediction is stored with its full distribution, and the interface reads two
+different numbers from it:
+
+| Purpose | Field | Why |
+| --- | --- | --- |
+| Projected point total | `expected_points` | Minimises average error, which is what a displayed number should do |
+| Ordering players | `ceiling` (90th percentile) | The mean shrinks toward the conditional centre, and that shrinkage compresses the spread ranking depends on |
+
+`ranked_predictions()` orders by ceiling then expected points. The tiebreak
+matters: FPL points are discrete, so ceilings cluster on a few values and would
+otherwise leave the top of the table arbitrarily ordered among equals.
+
+Measurements behind this split are in
+[docs/MODEL_EVALUATION.md](docs/MODEL_EVALUATION.md).
+
 ## Data model
 
 The database stores:

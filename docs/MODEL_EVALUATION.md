@@ -546,6 +546,68 @@ ceiling alone therefore leaves the leaderboard coarse at the top. Expected point
 varies more finely and is the natural tiebreak; the interface should order by
 ceiling, then by expected points.
 
+## Nine-fold confirmation of the ceiling (2026-08-04)
+
+The single-holdout result did not replicate. Pooled over all nine folds:
+
+| Model | State | MAE | Spearman |
+| --- | --- | ---: | ---: |
+| `two_stage_net` (mean) | in-season | **0.9668** | 0.6734 |
+| `two_stage_net_ceiling` | in-season | 1.1554 | 0.6716 |
+| existing_heuristic | in-season | 1.0638 | **0.6899** |
+| `two_stage_net` (mean) | preseason | **1.2161** | 0.2838 |
+| `two_stage_net_ceiling` | preseason | 1.4634 | 0.2851 |
+| existing_heuristic | preseason | 1.2891 | **0.3065** |
+
+Against the single holdout, which showed in-season ceiling Spearman of 0.7179
+and preseason 0.3848. **Fourth non-replication**, and this one was one step from
+being deployed. The nine-fold requirement is what caught it.
+
+### Per fold, the two states behave completely differently
+
+The ceiling beat the heuristic in 6 of 18 fold-states — but not at random:
+
+| State | Folds won | Pattern |
+| --- | --- | --- |
+| In-season | **0 of 9** | Consistently 0.015–0.025 below, every single fold |
+| Preseason | **6 of 9** | Both losses are the folds trained on one or two seasons |
+
+The 2017/18 preseason fold trains on a single season and scores 0.0141 against
+the heuristic's 0.2641. One fold, measuring a model trained on almost nothing,
+drags the pooled average below the gate.
+
+### Sensitivity to how much training data a fold gets
+
+| Minimum training seasons | Folds | Preseason ceiling | Heuristic | Verdict |
+| ---: | ---: | ---: | ---: | --- |
+| 1 (all) | 9 | 0.2851 | **0.3065** | fails |
+| 2 | 8 | **0.3144** | 0.3111 | clears |
+| 3 | 7 | **0.3316** | 0.3193 | clears |
+| 4 | 6 | **0.3382** | 0.3280 | clears |
+| 5 | 5 | **0.3480** | 0.3366 | clears |
+
+In-season fails at every level: 0.6716, 0.6779 and 0.6847 against 0.6899,
+0.6963 and 0.7025 for minimums of 1, 3 and 5.
+
+The preseason margin grows monotonically with training data, which is what a
+model that genuinely learns looks like, rather than an artefact of one lucky
+split.
+
+### The decision this poses
+
+A model deployed today trains on **nine** seasons. The fold that fails trains on
+**one**, measuring a situation that will never occur in production, and
+`walk_forward_folds` already takes a `min_train_seasons` parameter for exactly
+this reason.
+
+That is a real argument. It is also, unavoidably, an argument constructed after
+seeing which fold was inconvenient, which is the same shape as the goalpost-
+moving this document has been guarding against throughout. **No minimum has been
+changed, and nothing has shipped.** The choice belongs to the project owner.
+
+What is not in question: **in-season, the model loses at every level and does not
+ship.**
+
 ## Limitations
 
 These are real and they bound what the numbers above can be read to mean.
