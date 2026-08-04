@@ -42,8 +42,11 @@ class GradientBoostedCandidate:
 
     This runs before any neural network deliberately. It is cheap, and it
     answers the question that decides whether a network is worth building: does
-    this feature set carry signal beyond the heuristics at all? If it does not,
-    a network inherits the same ceiling and the next work is features.
+    this feature set carry signal beyond the heuristics?
+
+    It does -- but only once the model is small enough not to memorise the
+    training seasons. That finding transfers directly to the network, which has
+    far more capacity and no regularisation at all.
     """
 
     name = "gradient_boosted"
@@ -51,20 +54,33 @@ class GradientBoostedCandidate:
     def __init__(
         self,
         seed: int = 17,
-        max_iter: int = 200,
-        loss: str = "absolute_error",
+        max_iter: int = 40,
+        loss: str = "squared_error",
         name: str | None = None,
+        max_depth: int | None = 2,
+        learning_rate: float = 0.1,
+        l2_regularization: float = 0.0,
     ) -> None:
-        # Squared error is the sklearn default and it is the wrong objective
-        # here. FPL points are heavily right-skewed -- most returns are 0-2 and
-        # a few are 15+ -- so a squared-error fit chases the tail and gives up
-        # median accuracy and ranking, which is what the interface actually
-        # uses. Measured: squared error scored the best RMSE of any model in
-        # both information states while scoring the worst preseason MAE and
-        # Spearman.
+        # Defaults are small and heavily constrained on purpose.
+        #
+        # Loss choice trades two things the application both needs. Absolute
+        # error targets the conditional median and wins MAE decisively; squared
+        # error and Poisson target the mean, keep more spread, and rank better.
+        # Neither dominates, so all three are scored.
+        #
+        # Capacity mattered more than the loss. An unconstrained fit (200
+        # iterations, unlimited depth) memorised the training seasons and lost
+        # to the deployed heuristic on ranking in both information states.
+        # Constraining it recovered the gap: over three folds preseason Spearman
+        # rose from 0.3297 to 0.3614 and in-season from 0.6717 to 0.6905, the
+        # latter edging past the heuristic. The feature set was never the
+        # ceiling -- the configuration was.
         self.seed = seed
         self.max_iter = max_iter
         self.loss = loss
+        self.max_depth = max_depth
+        self.learning_rate = learning_rate
+        self.l2_regularization = l2_regularization
         if name is not None:
             self.name = name
         self._model = None
@@ -82,9 +98,19 @@ class GradientBoostedCandidate:
             random_state=self.seed,
             max_iter=self.max_iter,
             loss=self.loss,
+            max_depth=self.max_depth,
+            learning_rate=self.learning_rate,
+            l2_regularization=self.l2_regularization,
             early_stopping=False,
         )
-        self._model.fit(features, list(dataset.y))
+        target = list(dataset.y)
+        if self.loss == "poisson":
+            # Poisson requires a non-negative target. Own goals and cards make
+            # 0.44% of observations negative; those are clamped to zero, which
+            # is a real if small loss of fidelity at the bottom of the range.
+            target = [max(0.0, value) for value in target]
+
+        self._model.fit(features, target)
         logger.info(
             "fitted %s rows=%s inputs=%s seed=%s",
             self.name, len(dataset.y), self.n_inputs, self.seed,

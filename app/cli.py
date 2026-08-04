@@ -91,11 +91,23 @@ def command_evaluate(
         # Both losses are scored: squared error wins RMSE, absolute error wins
         # MAE, and which matters depends on whether a number or a ranking is
         # being shown. Measuring both is cheaper than arguing about it.
+        # Regularised: an unconstrained fit memorised the training seasons and
+        # lost to the heuristic on ranking. Three losses are scored because
+        # they trade MAE against ranking differently.
         trainables.append(
-            GradientBoostedCandidate(loss="absolute_error", name="gbdt_absolute")
+            GradientBoostedCandidate(
+                loss="squared_error", max_depth=2, max_iter=40, name="gbdt_sq_d2"
+            )
         )
         trainables.append(
-            GradientBoostedCandidate(loss="squared_error", name="gbdt_squared")
+            GradientBoostedCandidate(
+                loss="poisson", max_depth=3, max_iter=50, name="gbdt_poisson_d3"
+            )
+        )
+        trainables.append(
+            GradientBoostedCandidate(
+                loss="absolute_error", max_depth=3, max_iter=50, name="gbdt_abs_d3"
+            )
         )
 
     with SessionLocal() as db:

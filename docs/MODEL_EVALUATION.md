@@ -195,16 +195,69 @@ representative. It was read as evidence and it should not have been. This is
 what walk-forward evaluation is for, and it is the reason the full run happens
 before a decision rather than after.
 
-### Not yet evaluated
+## Regularisation: the earlier diagnosis was wrong
+
+The conclusion above — that the objective was the binding constraint — was
+itself incomplete. Two further experiments overturned it.
+
+**First, is better ranking learnable from these features at all?** A model was
+trained directly on a within-gameweek percentile rank of points, which optimises
+ordering and nothing else. Over three folds it scored Spearman 0.2149 preseason
+and 0.6177 in-season, against the heuristic's 0.3356 and 0.6985. It lost.
+
+That looks like proof the feature set is the ceiling. It is not.
+
+**Second, was the candidate overfitting?** Every run to this point used 200
+boosting iterations with unlimited depth and no early stopping, on roughly
+60,000 rows with 72 inputs. Constraining it changes the answer:
+
+| Configuration | Preseason Spearman | In-season Spearman |
+| --- | ---: | ---: |
+| 200 iterations, unlimited depth | 0.3297 | 0.6717 |
+| 50 iterations, depth 3 | **0.3593** | 0.6855 |
+| 40 iterations, depth 2 | **0.3614** | **0.6905** |
+| heuristic | 0.3356 | 0.6985 |
+
+A *smaller* model beats the heuristic on preseason ranking. The unconstrained
+fit was memorising season-specific patterns that did not transfer across the
+walk-forward boundary. **The feature set was never the ceiling; the
+configuration was.**
+
+Sweeping loss against regularisation over the same three folds found one
+configuration clearing both in-season thresholds:
+
+| Loss | Config | MAE | Spearman | Verdict |
+| --- | --- | ---: | ---: | --- |
+| squared_error | depth 2, 40 iter | 1.0537 | 0.6905 | **clears both** |
+| squared_error | depth 3, 50 iter | 1.0440 | 0.6855 | fails ranking |
+| poisson | depth 3, 50 iter | 1.0384 | 0.6855 | fails ranking |
+| absolute_error | depth 3, 50 iter | 0.8943 | 0.6727 | fails ranking |
+
+Preseason, nothing clears both: the best ranking (poisson, depth 3, Spearman
+0.3683) fails MAE at 1.3988, and the best MAE (absolute error, 1.1034) fails
+ranking at 0.2603.
+
+### Treat the in-season result as unconfirmed
+
+The winning margin is **0.0006 Spearman on three folds**. That is well inside
+the noise this evaluation can resolve, and over-reading a small number of
+favourable folds is precisely the error recorded in the correction above. It is
+noted here as promising and is **not** a basis for shipping anything until the
+full nine-fold run confirms it.
+
+### The network remains unevaluated
 
 The two-stage network is built and unit-tested but **has not been scored on the
 full folds**. Training it nine times across two information states on up to
 200,000 rows, single-threaded for reproducibility, is hours of compute and was
 not run. No claim is made about it in either direction.
 
-Given the finding above, the network as currently written would likely inherit
-the same ceiling: it fits points with L1, so it optimises the median for the
-same reason. Changing the objective should come before spending the compute.
+There is now a specific reason to change it before spending that compute. The
+network has 128 hidden units in two layers and no regularisation — no dropout,
+no weight decay, no early stopping — which is a far larger capacity than the
+40-iteration depth-2 tree that just proved to be the best-ranking configuration.
+On this evidence it would overfit at least as badly. Regularising the network,
+and reconsidering its L1 points loss, should both precede the full run.
 
 ## Limitations
 
