@@ -4,11 +4,28 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.db.models import PlayerSnapshot
 from app.services.captaincy import (
+    SNAPSHOT_FIELDS,
     captain_candidates,
     fixtures_in_gameweek,
     next_gameweek_projection,
 )
+
+
+def test_every_field_this_module_reads_exists_on_the_model():
+    """Guards the failure mode that emptied the shortlist in development.
+
+    Every snapshot attribute is read through ``getattr(..., None)``, so a name
+    that does not exist yields None, which ``next_gameweek_projection`` treats
+    as "no basis" and skips. The result is an empty page rather than an error,
+    and unit tests built on a hand-made stub cannot catch it -- the stub simply
+    has whatever field the code asked for.
+    """
+    for field in SNAPSHOT_FIELDS:
+        assert hasattr(PlayerSnapshot, field), (
+            f"captaincy reads {field!r}, which PlayerSnapshot does not have"
+        )
 
 
 def _snapshot(**overrides):
@@ -17,7 +34,7 @@ def _snapshot(**overrides):
         points_per_game=5.0,
         points_per_90=6.0,
         expected_minutes=85.0,
-        availability=1.0,
+        availability_factor=1.0,
         upcoming_fixtures=[
             {"event": 2, "opponent": "OTH", "difficulty": 2, "is_home": True},
             {"event": 3, "opponent": "TST", "difficulty": 4, "is_home": False},

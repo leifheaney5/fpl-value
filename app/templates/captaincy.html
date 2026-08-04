@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Captaincy · FPL Value Studio{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">CAPTAINCY</p><h1>{% if gameweek %}Who to captain in Gameweek {{ gameweek }}.{% else %}Who to captain.{% endif %}</h1><p>Projected for the next gameweek alone, counting every fixture in it. The captain figure is that projection doubled.</p></div></div>
+
+{% if not candidates %}
+<section class="panel">
+  <div class="panel-title"><h2>Not available</h2><span class="muted">{{ readiness.state }}</span></div>
+  <p>{{ readiness.explanation }}</p>
+  <p class="muted">{{ readiness.activates_when }}</p>
+  {% if readiness.fallback %}<p class="muted">{{ readiness.fallback }}</p>{% endif %}
+</section>
+{% else %}
+<div class="table-wrap"><table class="data-table"><thead><tr><th>Player</th><th>Captain points</th><th>Projection</th><th>Fixtures</th><th>Confidence</th><th>Why</th></tr></thead><tbody>
+{% for row in candidates %}<tr><td><a href="/players/{{ row.player.id }}">{{ row.player.web_name }}</a><small>{{ row.player.position_short }}</small></td><td>{{ "%.1f"|format(row.captain_points) }}</td><td>{{ "%.2f"|format(row.projection) }}</td><td>{{ row.fixture_count }}</td><td>{{ row.confidence }}</td><td>{{ row.reasoning }}</td></tr>
+{% endfor %}
+</tbody></table></div>
+<section class="panel">
+  <p class="muted">Players whose projection has no basis are left out rather than ranked last. Ordering them at the bottom would assert they are the worst options, which is a claim the data does not support.</p>
+  <p class="muted">These are transparent analytical heuristics, not official FPL predictions.</p>
+</section>
+{% endif %}
+{% endblock %}

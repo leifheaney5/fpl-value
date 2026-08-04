@@ -513,11 +513,18 @@ def dashboard_data(db: Session, season: str) -> dict[str, Any]:
                     (snapshot.team_matches for snapshot in snapshots), default=0
                 ),
                 "snapshot_count": 2 if comparable else 1,
+                "next_gameweek": state.get("next_gameweek"),
             },
             state=state["state"],
             age_hours=age_hours,
         )
-        for name in ("projections", "expected_minutes", "movers", "recommendations")
+        for name in (
+            "projections",
+            "expected_minutes",
+            "movers",
+            "recommendations",
+            "captaincy",
+        )
     }
 
     return {

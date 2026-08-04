@@ -221,3 +221,61 @@ class ProvisionalClient(LiveClient):
     """Gameweek 1 has finished but bonus points are not confirmed."""
 
     FIRST_DATA_CHECKED = False
+
+
+class SquadClient(LiveClient):
+    """A full roster, so features with a minimum-sample gate actually activate.
+
+    ``LiveClient`` has one player, which leaves every feature requiring fifteen
+    projections stuck at ``not_ready`` -- so its pages render the "not
+    available" panel and the real output is never exercised. This client fields
+    twenty players and gives team 1 a **double gameweek** in GW2, so a team-1
+    player must outrank an otherwise identical team-2 player.
+    """
+
+    SQUAD_SIZE = 20
+
+    def bootstrap(self):
+        payload = super().bootstrap()
+        payload["teams"] = [
+            {"id": 1, "name": "Test FC", "short_name": "TST"},
+            {"id": 2, "name": "Other FC", "short_name": "OTH"},
+            {"id": 3, "name": "Third FC", "short_name": "THR"},
+        ]
+        template = payload["elements"][0]
+        elements = []
+        for index in range(self.SQUAD_SIZE):
+            # Alternate teams so the two halves are otherwise identical: any
+            # ranking difference between them is then attributable to fixtures.
+            team = 1 if index % 2 == 0 else 2
+            elements.append(
+                dict(
+                    template,
+                    id=10 + index,
+                    first_name="Player",
+                    second_name=f"{index:02d}",
+                    web_name=f"P{index:02d}",
+                    team=team,
+                )
+            )
+        payload["elements"] = elements
+        return payload
+
+    def fixtures(self):
+        played, away = super().fixtures()
+        return [
+            played,
+            away,
+            # Team 1's second fixture of gameweek 2. Team 3 exists only to
+            # provide the opponent.
+            {
+                "id": 3,
+                "event": 2,
+                "finished": False,
+                "kickoff_time": _relative(self.NEXT_DEADLINE_HOURS + 26),
+                "team_h": 1,
+                "team_a": 3,
+                "team_h_difficulty": 2,
+                "team_a_difficulty": 4,
+            },
+        ]

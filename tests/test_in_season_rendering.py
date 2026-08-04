@@ -19,7 +19,8 @@ from app.db.base import Base
 from app.db.models import Gameweek
 from app.db.session import get_db
 from app.main import app
-from app.services.queries import latest_snapshot_time
+from app.services.captaincy import captain_candidates
+from app.services.queries import dashboard_data, latest_snapshot_time
 from app.services.refresh import refresh_data
 from app.services.season_state import SeasonState, season_state
 
@@ -28,13 +29,14 @@ from fakes import (
     LiveClient,
     PreDeadlineClient,
     ProvisionalClient,
+    SquadClient,
 )
 
 PAGES = [
     "/", "/spreadsheet", "/spreadsheet?view=forward", "/spreadsheet?view=movers",
     "/forward", "/rotation", "/transfers", "/movers", "/compare",
     "/diagnostics", "/schema", "/settings", "/differentials",
-    "/transfer-market", "/templates", "/recommendation",
+    "/transfer-market", "/templates", "/recommendation", "/captaincy",
 ]
 
 STATES = [
@@ -100,5 +102,66 @@ def test_every_page_renders(tmp_path, path, client_class, expected_state):
         assert response.status_code == 200, (
             f"{path} returned {response.status_code} in {expected_state}"
         )
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_captaincy_names_the_gameweek_it_is_advising_on(tmp_path):
+    """A captaincy pick without a gameweek attached is not actionable."""
+    client, _ = _seeded(tmp_path, LiveClient, "cap.db")
+    try:
+        body = client.get("/captaincy").text
+        assert "Gameweek 2" in body
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_captaincy_ranks_a_full_squad(tmp_path):
+    """The ranking table must actually render, not the not-available panel.
+
+    ``LiveClient`` fields one player, so captaincy stays below its
+    fifteen-projection minimum and the page shows "Not available". Without a
+    full roster the real output would never be exercised -- the same gap this
+    module exists to close.
+    """
+    client, _ = _seeded(tmp_path, SquadClient, "cap-squad.db")
+    try:
+        body = client.get("/captaincy").text
+        assert "Not available" not in body
+        assert "Captain points" in body
+        assert "P00" in body
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_a_double_gameweek_outranks_an_identical_single(tmp_path):
+    """Team 1 plays twice in GW2; team 2 once. Otherwise the squads match.
+
+    This is the whole reason captaincy uses a next-gameweek projection instead
+    of dividing the five-fixture window: that average would rank these equally.
+    """
+    client, Session = _seeded(tmp_path, SquadClient, "cap-dgw.db")
+    try:
+        with Session() as db:
+            data = dashboard_data(db, "2026/27")
+            # The whole squad, not the default top eight: with ten
+            # double-gameweek players the shortlist is all doubles, which is
+            # the right answer but leaves nothing to compare against.
+            candidates = captain_candidates(
+                [row["snapshot"] for row in data["rows"]],
+                data["season_state"]["next_gameweek"],
+                limit=50,
+            )
+        assert candidates, "expected a ranked shortlist"
+        doubles = [row for row in candidates if row["fixture_count"] == 2]
+        singles = [row for row in candidates if row["fixture_count"] == 1]
+        assert doubles and singles, (
+            f"expected both a double and a single gameweek, got "
+            f"{[row['fixture_count'] for row in candidates]}"
+        )
+        assert min(row["projection"] for row in doubles) > max(
+            row["projection"] for row in singles
+        )
+        assert "two fixtures" in doubles[0]["reasoning"]
     finally:
         app.dependency_overrides.clear()

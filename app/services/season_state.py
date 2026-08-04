@@ -342,6 +342,20 @@ FEATURES: dict[str, FeatureRequirement] = {
         ),
         fallback="None. Ownership on its own does not identify a differential.",
     ),
+    "captaincy": FeatureRequirement(
+        required_inputs=("projections_available", "next_gameweek"),
+        supported_states=IN_SEASON_STATES,
+        minimum_sample={"projections_available": 15, "next_gameweek": 1},
+        activates_when=(
+            "Captaincy activates once expected minutes exist and a next "
+            "gameweek is scheduled. Doubling a projection that has no minutes "
+            "estimate behind it doubles the guess, not the information."
+        ),
+        fallback=(
+            "None. Ranking by last season's points would be a recommendation "
+            "about a season that has ended."
+        ),
+    ),
 }
 
 

@@ -16,6 +16,20 @@ from typing import Any
 
 from app.analytics.metrics import project_next_fixtures
 
+# The snapshot attributes this module reads. Named explicitly because every one
+# of them is reached through ``getattr`` with a default, so a renamed or
+# misremembered column degrades to "no projection for anybody" rather than
+# raising. That is exactly how ``availability`` -- which does not exist; the
+# column is ``availability_factor`` -- silently emptied the shortlist.
+SNAPSHOT_FIELDS = (
+    "expected_minutes",
+    "availability_factor",
+    "form",
+    "points_per_game",
+    "points_per_90",
+    "upcoming_fixtures",
+)
+
 
 def fixtures_in_gameweek(snapshot: Any, gameweek: int | None) -> list[dict[str, Any]]:
     """Every fixture the player's team plays in that gameweek.
@@ -41,7 +55,7 @@ def next_gameweek_projection(snapshot: Any, gameweek: int | None) -> float | Non
         return None
 
     expected = getattr(snapshot, "expected_minutes", None)
-    availability = getattr(snapshot, "availability", None)
+    availability = getattr(snapshot, "availability_factor", None)
     if expected is None or availability is None:
         return None
 

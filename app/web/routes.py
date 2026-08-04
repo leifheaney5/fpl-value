@@ -25,6 +25,7 @@ from app.api.fpl_client import FPLClient
 from app.config import Settings, get_settings
 from app.db.models import Player
 from app.db.session import get_db
+from app.services.captaincy import captain_candidates
 from app.services.exports import csv_bytes, xlsx_bytes
 from app.services.queries import (
     dashboard_data,
@@ -36,6 +37,7 @@ from app.services.queries import (
     recent_schema_changes,
 )
 from app.services.refresh import refresh_data
+from app.services.season_state import Readiness
 from app.services.my_team import linked_team_data, transfer_plan
 from app.services.team_recommender import (
     NotReadyError,
@@ -391,6 +393,32 @@ def differentials(
     return templates.TemplateResponse(request=request, name="differentials.html", context={
         "rows": scored, "unscored": unscored, "ownership": ownership,
         "position": position or "", "max_price": max_price,
+    })
+
+
+@router.get("/captaincy", response_class=HTMLResponse)
+def captaincy(
+    request: Request,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Who to captain in the next gameweek, and how confident that is."""
+    data = dashboard_data(db, settings.current_season)
+    readiness = data["readiness"]["captaincy"]
+    gameweek = data["season_state"].get("next_gameweek")
+
+    candidates = []
+    if readiness["state"] in (Readiness.READY, Readiness.STALE):
+        candidates = captain_candidates(
+            [row["snapshot"] for row in data["rows"]], gameweek
+        )
+
+    return templates.TemplateResponse(request=request, name="captaincy.html", context={
+        "candidates": candidates,
+        "gameweek": gameweek,
+        "readiness": readiness,
+        "season_state": data["season_state"],
+        "season": data["season"],
     })
 
 

@@ -41,6 +41,7 @@ PAGES = [
     "/transfer-market",
     "/templates",
     "/recommendation",
+    "/captaincy",
 ]
 
 
@@ -116,6 +117,17 @@ def test_preseason_pages_do_not_present_unavailable_metrics_as_zero(tmp_path):
         # And the sort keys must be empty rather than zero, so a click cannot
         # order unavailable players as though they scored lowest.
         assert 'data-sort-value=""' in body
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_captaincy_declines_to_advise_in_preseason(tmp_path):
+    """No match played means no expected minutes means no captaincy case."""
+    client, _ = _seeded_client(tmp_path, PreseasonClient, "cap-pre.db")
+    try:
+        body = client.get("/captaincy").text
+        assert "activates once" in body
+        assert "Not available" in body
     finally:
         app.dependency_overrides.clear()
 
