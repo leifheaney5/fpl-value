@@ -40,16 +40,26 @@ MAX_MINUTES = 90.0
 
 
 class TwoStageNet(nn.Module):
-    def __init__(self, n_features: int, hidden: int = 128) -> None:
+    def __init__(
+        self, n_features: int, hidden: int = 32, dropout: float = 0.2
+    ) -> None:
         super().__init__()
+        # Small by default. Measured on this data: an unconstrained
+        # gradient-boosted fit (200 iterations, unlimited depth) memorised the
+        # training seasons and lost to the deployed heuristic on ranking, while
+        # a 40-iteration depth-2 fit beat it. Capacity was the deciding factor,
+        # not the model class or the loss, so the network starts constrained.
+        #
         # The mask is concatenated to the values so the network can learn that a
         # masked feature carries no information, rather than reading its zero as
         # a measurement.
         self.encoder = nn.Sequential(
             nn.Linear(n_features * 2, hidden),
             nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(hidden, hidden),
             nn.ReLU(),
+            nn.Dropout(dropout),
         )
         self.appearance = nn.Linear(hidden, N_APPEARANCE_CLASSES)
         self.minutes = nn.Linear(hidden, 2)
@@ -87,12 +97,16 @@ class NetworkCandidate:
     def __init__(
         self,
         seed: int = 17,
-        epochs: int = 12,
-        hidden: int = 128,
+        epochs: int = 30,
+        hidden: int = 32,
         learning_rate: float = 1e-3,
         batch_size: int = 512,
         samples: int = 128,
         deterministic: bool = True,
+        dropout: float = 0.2,
+        weight_decay: float = 1e-4,
+        patience: int = 3,
+        name: str | None = None,
     ) -> None:
         self.seed = seed
         self.epochs = epochs
@@ -101,6 +115,14 @@ class NetworkCandidate:
         self.batch_size = batch_size
         self.samples = samples
         self.deterministic = deterministic
+        self.dropout = dropout
+        self.weight_decay = weight_decay
+        self.patience = patience
+        # How many epochs actually ran, which early stopping makes less than
+        # `epochs`. Recorded so a training run can be audited afterwards.
+        self.epochs_run = 0
+        if name is not None:
+            self.name = name
         self._net: TwoStageNet | None = None
         self._n_features = 0
 
@@ -126,7 +148,9 @@ class NetworkCandidate:
     def _fit(self, dataset: Dataset) -> None:
         torch.manual_seed(self.seed)
         self._n_features = len(dataset.feature_names)
-        self._net = TwoStageNet(self._n_features, hidden=self.hidden)
+        self._net = TwoStageNet(
+            self._n_features, hidden=self.hidden, dropout=self.dropout
+        )
 
         x = torch.tensor(dataset.x, dtype=torch.float32)
         mask = torch.tensor(dataset.mask, dtype=torch.float32)
@@ -145,12 +169,29 @@ class NetworkCandidate:
             ),
         )
 
-        optimiser = torch.optim.Adam(self._net.parameters(), lr=self.learning_rate)
+        optimiser = torch.optim.Adam(
+            self._net.parameters(),
+            lr=self.learning_rate,
+            weight_decay=self.weight_decay,
+        )
         appearance_loss = nn.CrossEntropyLoss()
 
-        n = len(points)
+        # Hold out the tail for early stopping. The split is by position rather
+        # than at random because the rows arrive ordered by player and time, so
+        # a tail split is closer to predicting unseen players than a shuffle.
+        n_all = len(points)
+        cut = max(1, int(n_all * 0.85))
+        train_index = torch.arange(cut)
+        validate_index = torch.arange(cut, n_all)
+
+        best_validation = float("inf")
+        best_state = None
+        since_improvement = 0
+
+        n = cut
         for epoch in range(self.epochs):
-            permutation = torch.randperm(n)
+            self._net.train()
+            permutation = train_index[torch.randperm(n)]
             total = 0.0
             for start in range(0, n, self.batch_size):
                 index = permutation[start : start + self.batch_size]
@@ -190,7 +231,49 @@ class NetworkCandidate:
                 optimiser.step()
                 total += float(loss.item())
 
-            logger.info("epoch %s/%s loss=%.4f", epoch + 1, self.epochs, total)
+            self.epochs_run = epoch + 1
+
+            # Early stopping on held-out absolute error. Evaluated in eval mode
+            # so dropout is inert and the measurement reflects what would be
+            # served.
+            if len(validate_index) == 0:
+                logger.info("epoch %s/%s loss=%.4f", epoch + 1, self.epochs, total)
+                continue
+
+            self._net.eval()
+            with torch.no_grad():
+                out = self._net(x[validate_index], mask[validate_index])
+                validation = float(
+                    nn.functional.l1_loss(
+                        self._expected_points(out), points[validate_index]
+                    ).item()
+                )
+
+            logger.info(
+                "epoch %s/%s loss=%.4f validation_l1=%.4f",
+                epoch + 1, self.epochs, total, validation,
+            )
+
+            if validation < best_validation - 1e-4:
+                best_validation = validation
+                best_state = {
+                    key: value.detach().clone()
+                    for key, value in self._net.state_dict().items()
+                }
+                since_improvement = 0
+            else:
+                since_improvement += 1
+                if since_improvement >= self.patience:
+                    logger.info(
+                        "early stop at epoch %s: no improvement for %s epochs",
+                        epoch + 1, self.patience,
+                    )
+                    break
+
+        # Restore the best weights seen, not the last: the final epochs are the
+        # ones that triggered the stop by getting worse.
+        if best_state is not None:
+            self._net.load_state_dict(best_state)
 
     # -- inference --------------------------------------------------------
 

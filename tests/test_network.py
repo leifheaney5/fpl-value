@@ -122,3 +122,56 @@ def test_predictions_are_never_negative(tiny_dataset):
 
 def test_the_candidate_has_a_stable_name():
     assert NetworkCandidate().name == "two_stage_network"
+
+
+def test_dropout_is_active_in_training_and_inert_in_evaluation():
+    """Dropout must never perturb a served prediction."""
+    net = TwoStageNet(n_features=N_FEATURES, hidden=16, dropout=0.5)
+    x, mask = torch.randn(4, N_FEATURES), torch.ones(4, N_FEATURES)
+
+    net.eval()
+    with torch.no_grad():
+        first = net(x, mask)["appearance_logits"]
+        second = net(x, mask)["appearance_logits"]
+    assert torch.allclose(first, second), "eval-mode output is not deterministic"
+
+    net.train()
+    torch.manual_seed(1)
+    a = net(x, mask)["appearance_logits"]
+    torch.manual_seed(2)
+    b = net(x, mask)["appearance_logits"]
+    assert not torch.allclose(a, b), "dropout had no effect in training mode"
+
+
+def test_the_default_network_is_small():
+    """Capacity, not the loss function, was what decided ranking.
+
+    A 40-iteration depth-2 tree outperformed a 200-iteration unlimited-depth
+    one on identical data, so the network default should be constrained too.
+    """
+    model = NetworkCandidate()
+    assert model.hidden <= 64
+    assert model.dropout > 0.0
+    assert model.weight_decay > 0.0
+
+
+def test_early_stopping_halts_before_the_epoch_cap(tiny_dataset):
+    model = NetworkCandidate(seed=17, epochs=200, patience=2, hidden=16)
+    model.fit(tiny_dataset)
+    assert model.epochs_run < 200, "training ignored early stopping"
+    assert model.epochs_run > 0
+
+
+def test_a_masked_feature_still_cannot_reach_a_weight_after_regularising():
+    """The masked-feature guarantee must survive the architecture change."""
+    net = TwoStageNet(n_features=N_FEATURES, hidden=16, dropout=0.3).eval()
+    mask = torch.ones(1, N_FEATURES)
+    mask[0, 5] = 0.0
+    quiet, loud = torch.zeros(1, N_FEATURES), torch.zeros(1, N_FEATURES)
+    loud[0, 5] = 99.0
+    with torch.no_grad():
+        assert torch.allclose(
+            net(quiet, mask)["appearance_logits"],
+            net(loud, mask)["appearance_logits"],
+            atol=1e-6,
+        )
