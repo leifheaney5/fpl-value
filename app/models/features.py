@@ -25,7 +25,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
-VERSION = "1.0.0"
+# Bumped to 1.1.0 on 2026-08-04 when opponent strength was added. Artefacts
+# record this, and app/services/predictions.py refuses to serve a model whose
+# feature version no longer matches.
+VERSION = "1.1.0"
 
 
 def _as_utc(value: datetime | None) -> datetime | None:
@@ -54,6 +57,12 @@ FEATURE_NAMES: tuple[str, ...] = (
     "fix_difficulty",
     "fix_is_home",
     "fix_gameweek",
+    # Opponent strength, derived from matches already played. Masked before
+    # 2021-22, where the archive records no team names, and masked early in a
+    # season before the opponent has played anyone.
+    "fix_opponent_attack",
+    "fix_opponent_defence",
+    "fix_opponent_matches",
     # Current season. Masked entirely in preseason.
     "cur_matches",
     "cur_minutes_mean",
@@ -297,6 +306,14 @@ def build_features(
     _set(values, mask, "fix_difficulty", float(getattr(target, "difficulty", 3) or 3))
     _set(values, mask, "fix_is_home", 1.0 if getattr(target, "is_home", False) else 0.0)
     _set(values, mask, "fix_gameweek", float(getattr(target, "gameweek", 0) or 0))
+
+    # Opponent strength is supplied by the caller, which has the whole league's
+    # results; a single player's history cannot know it. None means unknown --
+    # an unnamed team in an older archive season, or an opponent who has not yet
+    # played -- and stays masked rather than defaulting to average.
+    _set(values, mask, "fix_opponent_attack", getattr(target, "opponent_attack", None))
+    _set(values, mask, "fix_opponent_defence", getattr(target, "opponent_defence", None))
+    _set(values, mask, "fix_opponent_matches", getattr(target, "opponent_matches", None))
 
     _write_season_block(values, mask, current, include_recent=True)
     _write_season_block(values, mask, previous, include_recent=False)

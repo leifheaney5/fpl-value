@@ -25,6 +25,11 @@ from app.models.features import (
     InformationState,
     build_features,
 )
+from app.models.opponent import (
+    TeamStrength,
+    build_fixture_opponents,
+    build_strength_by_gameweek,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,16 +70,27 @@ class Dataset:
 class _Target:
     """The fixture being predicted, described only by what is knowable first."""
 
-    __slots__ = ("season", "gameweek", "is_home", "difficulty")
+    __slots__ = (
+        "season", "gameweek", "is_home", "difficulty",
+        "opponent_attack", "opponent_defence", "opponent_matches",
+    )
 
-    def __init__(self, row: Any) -> None:
+    def __init__(
+        self,
+        row: Any,
+        opponent: TeamStrength | None = None,
+    ) -> None:
         self.season = row.season
         self.gameweek = row.gameweek
         self.is_home = bool(row.is_home)
         # The archive carries no fixture difficulty rating, so 3 (neutral) is
-        # used throughout. Recorded as a limitation in docs/MODEL_EVALUATION.md:
-        # it means fixture-aware models are undersold by this dataset.
+        # used throughout. Opponent strength below is the derived replacement.
         self.difficulty = 3
+        # None where the opponent cannot be identified (no team names before
+        # 2021-22) or has not yet played. Masked rather than defaulted.
+        self.opponent_attack = None if opponent is None else opponent.attack
+        self.opponent_defence = None if opponent is None else opponent.defence
+        self.opponent_matches = None if opponent is None else float(opponent.matches)
 
 
 def build_dataset(
@@ -90,9 +106,25 @@ def build_dataset(
     if seasons is not None:
         query = query.where(GameweekHistory.season.in_(list(seasons)))
 
+    all_rows = list(db.scalars(query).all())
+
     by_player: dict[int, list[GameweekHistory]] = defaultdict(list)
-    for row in db.scalars(query).all():
+    for row in all_rows:
         by_player[row.player_code].append(row)
+
+    # Opponent strength needs the whole league, not one player's history, so it
+    # is computed once here and looked up per row.
+    opponents = build_fixture_opponents(all_rows)
+    strength: dict[str, dict[int, dict[str, TeamStrength]]] = {
+        season: build_strength_by_gameweek(all_rows, season)
+        for season in {row.season for row in all_rows}
+    }
+
+    def _opponent_strength(row: GameweekHistory) -> TeamStrength | None:
+        opponent = opponents.get((row.season, row.fixture_id, row.team_name))
+        if opponent is None:
+            return None
+        return strength.get(row.season, {}).get(int(row.gameweek), {}).get(opponent)
 
     data = Dataset(
         x=[], mask=[], y=[], minutes=[], started=[], season=[], gameweek=[],
@@ -107,7 +139,10 @@ def build_dataset(
                 # can be neither a feature nor a safely-dated target.
                 continue
             vector = build_features(
-                rows, _Target(row), row.kickoff_time, information_state
+                rows,
+                _Target(row, _opponent_strength(row)),
+                row.kickoff_time,
+                information_state,
             )
             data.x.append(vector.as_list())
             data.mask.append(vector.mask_list())
