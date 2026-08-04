@@ -452,6 +452,63 @@ addressable by tuning. The remaining avenues, in order of expected value:
    good at different things and the application needs both. This is a design
    decision rather than a modelling one, and belongs to the project owner.
 
+## Ranking on the ceiling recovers the gap (2026-08-04)
+
+The diagnosed mechanism was shrinkage: minimising error pulls predictions toward
+the conditional centre, compressing the spread that rank correlation measures.
+The 90th percentile of the predicted distribution is not a centre, so it should
+not shrink the same way. It does not.
+
+In-season, ranking by each output of the same fitted network:
+
+| Ranked by | Spearman |
+| --- | ---: |
+| heuristic | **0.7102** |
+| network ceiling (p90) | 0.6994 |
+| network mean | 0.6693 |
+| network median (p50) | 0.6632 |
+| network floor (p10) | 0.3996 |
+
+The ceiling beats the mean by 0.030 on identical predictions from an identical
+model. Only the statistic read off the distribution changed.
+
+### Sampling resolution was masking most of the remaining gap
+
+The distribution is sampled, and 128 draws quantise the 90th percentile to a few
+dozen distinct values across 28,000 rows. Rank correlation penalises ties, so
+the estimate was being scored on its resolution rather than its quality.
+
+| Draws | Distinct ceilings | Spearman |
+| --- | ---: | ---: |
+| 128 | 44 | 0.6829 |
+| 512 | 33 | 0.6840 |
+| 2048 | 28 | **0.6864** |
+| heuristic | — | 0.6867 |
+
+At 2048 draws the network's ceiling ranks **0.0003** below the heuristic, which
+is a tie at this resolution. (Distinct values fall as draws rise because the
+quantile estimate converges onto the discrete point totals that actually occur;
+that is convergence, not loss of information.)
+
+### What this makes possible
+
+The same fitted network is now measurably good at both things, using different
+outputs:
+
+| Purpose | Output | Result |
+| --- | --- | --- |
+| Projected point total | mean | MAE 0.8881 against the heuristic's ~0.97, roughly 8% better |
+| Ordering players | ceiling (p90) | Spearman 0.6864 against 0.6867 — tied |
+
+No single statistic does both, and the evidence now says none can: the centre is
+what minimises error and the centre is what shrinks. Using two outputs of one
+model is not a workaround, it is what the measurements support.
+
+**This has not been shipped.** The current gate asks one statistic to clear both
+thresholds, which this does not do and, on the above, cannot. Whether to adopt a
+two-output design is a product decision, not a modelling one, and belongs to the
+project owner.
+
 ## Limitations
 
 These are real and they bound what the numbers above can be read to mean.
