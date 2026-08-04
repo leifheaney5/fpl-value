@@ -38,6 +38,23 @@ snapshots under the previous season.
 Configure cron as `0 14,15 * * *`; the CLI checks `APP_TIMEZONE` and
 `REFRESH_HOUR` to avoid duplicate daylight-saving refreshes.
 
+## Local verification
+
+`docker compose up --build` was last verified on 2026-08-04: the image builds at
+420MB, all eight migrations apply cleanly from empty against real PostgreSQL,
+`/health` returns 200, and `torch` is absent from the image.
+
+The compose stack sets `ACCESS_MODE=private`, so an anonymous request to `/`
+returning **303** is the correct result and not a failure. Sign-in additionally
+requires the CSRF token rendered into the login form; posting valid credentials
+without it returns 401 by design. A scripted check must fetch `/login` first,
+carry the session cookie, and submit the `csrf_token` field with the
+credentials.
+
+This run was the first time migrations `0005`–`0008` were applied to PostgreSQL
+rather than SQLite. They applied without error. They remain unapplied in
+production, deliberately.
+
 ## Deploying a trained model
 
 Model migrations `0005`–`0008` add the archive columns, the stable player code,
@@ -55,6 +72,14 @@ Before deploying a model, check three things:
    `app/services/predictions.py` refuses to serve a mismatch rather than
    producing numbers that do not mean what they claim.
 3. **`holdout_gate_passed` is true and `forced` is false** in the manifest. Note the name: that field records a single-holdout check only, and `walk_forward_confirmed` is what says the nine-fold run agreed.
+4. **`onnxruntime` is actually installed in the image.** It is deliberately not
+   a declared dependency, because nothing imports it while the heuristic is the
+   only projection source and it would otherwise add roughly fifty megabytes to
+   every deploy for no purpose. Confirmed absent from the image built on
+   2026-08-04. Add it to `dependencies` in `pyproject.toml` in the same change
+   that ships an artefact, never separately: the serving path at
+   `app/models/artefact.py` imports it lazily, so a missing dependency surfaces
+   as a request-time failure rather than a failed boot.
 
 Deploy with the artefact directory present in the image:
 

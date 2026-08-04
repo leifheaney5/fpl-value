@@ -53,6 +53,7 @@ to produce a result.
 - Centralised season state and per-feature readiness
 - Ten seasons of historical per-gameweek data for model training
 - Point-in-time feature builder with a proven no-leakage guarantee
+- Next-gameweek captaincy ranking that counts double gameweeks and stays silent without expected minutes
 - Walk-forward backtesting against six baselines
 - Railway Docker and cron configuration
 - Automated tests
