@@ -593,7 +593,25 @@ The preseason margin grows monotonically with training data, which is what a
 model that genuinely learns looks like, rather than an artefact of one lucky
 split.
 
-### The decision this poses
+### Decision, 2026-08-04: no model ships
+
+The project owner declined to train or ship a preseason model. The minimum
+training-season threshold stays at 1, the pooled preseason figure of 0.2851
+against the heuristic's 0.3065 stands, and **no model ships in either state**.
+
+The deployed `projected_points_5` heuristic remains the sole projection source.
+The readiness registry already reports it as the active fallback, so no
+interface change is required.
+
+The artefacts in `models/` were trained against a single holdout, are not
+walk-forward confirmed, and should not be deployed. They are gitignored and
+local only.
+
+The argument below is preserved because it is the reason the decision was a
+decision rather than an obvious call — not as a case to revisit without new
+evidence.
+
+### The argument that was declined
 
 A model deployed today trains on **nine** seasons. The fold that fails trains on
 **one**, measuring a situation that will never occur in production, and
