@@ -235,6 +235,16 @@ def evaluate_fold_from_dataset(
         try:
             candidate.fit(train)
             predictions[candidate.name] = candidate.predict_batch(test.x, test.mask)
+
+            # Score the ceiling separately where the candidate produces a
+            # distribution. Ranking uses the ceiling because the mean shrinks
+            # toward the conditional centre, and scoring only the mean is what
+            # made an earlier verdict of "not in contention" misleading.
+            if hasattr(candidate, "predict_distribution"):
+                quantiles = candidate.predict_distribution(test.x, test.mask)
+                predictions[f"{candidate.name}_ceiling"] = [
+                    q[2] for q in quantiles
+                ]
         except ValueError as exc:
             logger.warning(
                 "candidate %s could not be fitted for %s: %s",

@@ -134,6 +134,44 @@ def test_expected_points_are_never_negative(seeded_history_db, served_model):
         assert row.expected_points >= 0.0
 
 
+def test_ranked_predictions_order_by_ceiling_then_expected_points(
+    seeded_history_db, served_model
+):
+    """Ceiling ranks; expected points breaks the ties the ceiling leaves.
+
+    FPL points are discrete, so predicted ceilings cluster on a few values and
+    the top of the table would otherwise be arbitrarily ordered among equals.
+    """
+    from app.services.predictions import ranked_predictions
+
+    generate_predictions(seeded_history_db, "2026/27", 1, served_model)
+    rows = ranked_predictions(seeded_history_db, "2026/27", 1)
+    assert rows
+
+    keys = [(r.ceiling, r.expected_points) for r in rows]
+    assert keys == sorted(keys, reverse=True), "ordering is not ceiling then expected"
+
+
+def test_ranked_predictions_are_scoped_to_the_gameweek(
+    seeded_history_db, served_model
+):
+    from app.services.predictions import ranked_predictions
+
+    generate_predictions(seeded_history_db, "2026/27", 1, served_model)
+    generate_predictions(seeded_history_db, "2026/27", 2, served_model)
+
+    assert all(r.gameweek == 1 for r in ranked_predictions(seeded_history_db, "2026/27", 1))
+    assert all(r.gameweek == 2 for r in ranked_predictions(seeded_history_db, "2026/27", 2))
+    assert ranked_predictions(seeded_history_db, "2026/27", 99) == []
+
+
+def test_ranked_predictions_respect_a_limit(seeded_history_db, served_model):
+    from app.services.predictions import ranked_predictions
+
+    generate_predictions(seeded_history_db, "2026/27", 1, served_model)
+    assert len(ranked_predictions(seeded_history_db, "2026/27", 1, limit=1)) == 1
+
+
 def test_predictions_feature_is_registered_for_readiness():
     """An absent model must surface through the same registry as everything
     else, so the interface can say why rather than showing nothing."""

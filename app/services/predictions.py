@@ -39,6 +39,37 @@ class _Target:
         self.difficulty = 3
 
 
+def ranked_predictions(
+    db: Session,
+    season: str,
+    gameweek: int,
+    limit: int | None = None,
+) -> list[Prediction]:
+    """Stored predictions in the order the interface should present them.
+
+    Ordered by ceiling, then by expected points. The ceiling is what ranks
+    players -- the mean shrinks toward the conditional centre and compresses
+    ordering -- but FPL points are discrete, so ceilings cluster on a few values
+    and leave the top of the table heavily tied. Expected points varies more
+    finely and breaks those ties sensibly.
+    """
+    query = (
+        select(Prediction)
+        .where(
+            Prediction.season == season,
+            Prediction.gameweek == gameweek,
+            Prediction.horizon == "next",
+        )
+        .order_by(
+            Prediction.ceiling.desc().nulls_last(),
+            Prediction.expected_points.desc().nulls_last(),
+        )
+    )
+    if limit is not None:
+        query = query.limit(limit)
+    return list(db.scalars(query).all())
+
+
 def _confidence(start_probability: float, spread: float) -> str:
     """A plain-language reading of how certain a prediction is.
 

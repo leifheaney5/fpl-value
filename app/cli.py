@@ -110,6 +110,12 @@ def command_evaluate(
             )
         )
 
+        from app.models.network import NetworkCandidate
+
+        # Scored twice per fold: the mean under its own name for MAE, and the
+        # ceiling under "<name>_ceiling" for ranking.
+        trainables.append(NetworkCandidate(seed=17, epochs=30, name="two_stage_net"))
+
     with SessionLocal() as db:
         report = walk_forward(
             db,
