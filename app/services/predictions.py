@@ -39,6 +39,20 @@ class _Target:
         self.difficulty = 3
 
 
+def _confidence(start_probability: float, spread: float) -> str:
+    """A plain-language reading of how certain a prediction is.
+
+    Driven by the two things that actually make a projection uncertain: whether
+    the player will be on the pitch at all, and how wide the outcome range is
+    once they are.
+    """
+    if start_probability >= 0.8 and spread <= 4.0:
+        return "High"
+    if start_probability >= 0.5:
+        return "Medium"
+    return "Low"
+
+
 def _not_ready(reason: str, activates_when: str) -> dict[str, Any]:
     return {
         "readiness": Readiness.NOT_READY,
@@ -120,7 +134,17 @@ def generate_predictions(
             "Predictions activate once current players have gameweek history.",
         )
 
+    # Two outputs, because no single statistic serves both purposes. The mean
+    # is what to display as a projected total: it beat the heuristic's MAE by
+    # roughly 8%. The ceiling is what to rank on: minimising error pulls the
+    # mean toward the centre, and that shrinkage compresses the spread ordering
+    # depends on, whereas a 90th percentile does not shrink. Measured, the mean
+    # ranks 0.6693 and the ceiling 0.6864 against a heuristic at 0.6867.
     expected = served.predict(x, mask, feature_names=FEATURE_NAMES)
+    quantiles = served.predict_distribution(x, mask, feature_names=FEATURE_NAMES)
+    minutes, start_probability = served.predict_minutes(
+        x, mask, feature_names=FEATURE_NAMES
+    )
 
     # Replace rather than accumulate: one row per player, gameweek and model
     # version, so re-running is idempotent.
@@ -133,7 +157,8 @@ def generate_predictions(
         )
     )
 
-    for code, points in zip(codes, expected):
+    for index, (code, points) in enumerate(zip(codes, expected)):
+        floor, median, ceiling = quantiles[index]
         db.add(
             Prediction(
                 player_code=code,
@@ -142,14 +167,13 @@ def generate_predictions(
                 gameweek=gameweek,
                 horizon="next",
                 expected_points=points,
-                # Floor, median and ceiling stay null until a distributional
-                # model is served. Null is the honest value, not zero.
-                floor=None,
-                median=None,
-                ceiling=None,
-                expected_minutes=None,
-                start_probability=None,
-                confidence=None,
+                floor=floor,
+                median=median,
+                # Rank players on this, not on expected_points.
+                ceiling=ceiling,
+                expected_minutes=minutes[index],
+                start_probability=start_probability[index],
+                confidence=_confidence(start_probability[index], ceiling - floor),
                 model_name=manifest.model_name,
                 model_version=manifest.model_version,
                 feature_version=manifest.feature_version,

@@ -28,15 +28,16 @@ import torch
 from torch import nn
 
 from app.models.dataset import Dataset
+from app.models.scoring import (
+    MAX_MINUTES,
+    N_APPEARANCE_CLASSES,
+    N_EVENT_RATES,
+    POINTS_FOR_START,
+    POINTS_FOR_SUBSTITUTE,
+)
+from app.models.scoring import EVENT_POINTS as EVENT_POINTS_TUPLE
 
 logger = logging.getLogger(__name__)
-
-# start, substitute, unused
-N_APPEARANCE_CLASSES = 3
-# goals, assists, clean sheet, saves, bonus, cards
-N_EVENT_RATES = 6
-
-MAX_MINUTES = 90.0
 
 
 class TwoStageNet(nn.Module):
@@ -83,10 +84,10 @@ class TwoStageNet(nn.Module):
         }
 
 
-# Points per event, applied after sampling. Deliberately a table rather than
-# constants scattered through the composition, so a scoring change is an edit
-# here: goals, assists, clean sheet, saves (per three), bonus, cards.
-EVENT_POINTS = torch.tensor([5.0, 3.0, 1.0, 1.0 / 3.0, 1.0, -1.0])
+# The shared scoring table as a tensor. Both the training path here and the
+# numpy serving path in artefact.py read the same constants, so a scoring change
+# cannot land in one and not the other.
+EVENT_POINTS = torch.tensor(list(EVENT_POINTS_TUPLE))
 
 
 class NetworkCandidate:
@@ -293,7 +294,10 @@ class NetworkCandidate:
         rates = out["event_rates"] * (expected_minutes / MAX_MINUTES).unsqueeze(-1)
         event_points = (rates * EVENT_POINTS.to(rates.device)).sum(dim=-1)
         # An appearance itself scores, so carry the appearance probability.
-        appearance_points = probabilities[:, 0] * 2.0 + probabilities[:, 1] * 1.0
+        appearance_points = (
+            probabilities[:, 0] * POINTS_FOR_START
+            + probabilities[:, 1] * POINTS_FOR_SUBSTITUTE
+        )
         return event_points + appearance_points
 
     def _forward(
@@ -370,8 +374,12 @@ class NetworkCandidate:
         points = (events * EVENT_POINTS.to(events.device)).sum(dim=-1)
         points = points + torch.where(
             draws == 0,
-            torch.full_like(points, 2.0),
-            torch.where(draws == 1, torch.ones_like(points), torch.zeros_like(points)),
+            torch.full_like(points, POINTS_FOR_START),
+            torch.where(
+                draws == 1,
+                torch.full_like(points, POINTS_FOR_SUBSTITUTE),
+                torch.zeros_like(points),
+            ),
         )
         points = points.clamp(min=0.0)
 

@@ -138,6 +138,67 @@ def test_predictions_are_never_negative(tmp_path, tiny_dataset):
     assert all(value >= 0.0 for value in served.predict(tiny_dataset.x, tiny_dataset.mask))
 
 
+def test_the_served_distribution_is_ordered(tmp_path, tiny_dataset):
+    model = _fitted_network(tiny_dataset)
+    save_artefact(tmp_path, model, _manifest())
+    served = load_artefact(tmp_path)
+
+    quantiles = served.predict_distribution(tiny_dataset.x, tiny_dataset.mask)
+    assert len(quantiles) == len(tiny_dataset.y)
+    for floor, median, ceiling in quantiles:
+        assert floor <= median <= ceiling
+        assert floor >= 0.0
+
+
+def test_the_served_distribution_is_reproducible(tmp_path, tiny_dataset):
+    """Sampling happens at serve time, so the seed has to make it repeatable."""
+    model = _fitted_network(tiny_dataset)
+    save_artefact(tmp_path, model, _manifest())
+    served = load_artefact(tmp_path)
+
+    first = served.predict_distribution(tiny_dataset.x, tiny_dataset.mask, seed=17)
+    second = served.predict_distribution(tiny_dataset.x, tiny_dataset.mask, seed=17)
+    assert first == second
+
+
+def test_served_minutes_and_start_probability_are_available(tmp_path, tiny_dataset):
+    model = _fitted_network(tiny_dataset)
+    save_artefact(tmp_path, model, _manifest())
+    served = load_artefact(tmp_path)
+
+    minutes, start_probability = served.predict_minutes(
+        tiny_dataset.x, tiny_dataset.mask
+    )
+    assert len(minutes) == len(tiny_dataset.y)
+    assert all(0.0 <= v <= 90.0 for v in minutes)
+    assert all(0.0 <= v <= 1.0 for v in start_probability)
+
+
+def test_the_served_ceiling_tracks_the_served_mean(tmp_path, tiny_dataset):
+    """The ceiling must be a coherent statistic of the same prediction.
+
+    Deliberately not compared against the training-time sampler: both draw
+    randomly, so on any small fixture their ceilings differ by sampling noise
+    rather than by anything meaningful. What the export has to preserve is the
+    composition, and the mean round-trip above already proves that to 1e-3.
+    Here the check is that the ceiling sits above the mean and moves with it.
+    """
+    model = _fitted_network(tiny_dataset)
+    save_artefact(tmp_path, model, _manifest())
+    served = load_artefact(tmp_path)
+
+    means = served.predict(tiny_dataset.x, tiny_dataset.mask)
+    quantiles = served.predict_distribution(
+        tiny_dataset.x, tiny_dataset.mask, samples=2048
+    )
+    ceilings = [q[2] for q in quantiles]
+
+    assert len(ceilings) == len(means)
+    # A 90th percentile below the mean would mean the distribution and the
+    # expectation disagree about the same prediction.
+    assert sum(c >= m for c, m in zip(ceilings, means)) >= 0.9 * len(means)
+
+
 def test_an_empty_batch_returns_nothing_rather_than_failing(tmp_path, tiny_dataset):
     model = _fitted_network(tiny_dataset)
     save_artefact(tmp_path, model, _manifest())

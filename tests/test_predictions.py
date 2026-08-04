@@ -101,14 +101,31 @@ def test_rerunning_replaces_rather_than_accumulates(seeded_history_db, served_mo
     assert len(stored) == second["written"], "re-running duplicated predictions"
 
 
-def test_an_unavailable_distribution_is_null_not_zero(seeded_history_db, served_model):
-    """Floor, median and ceiling are absent until a distributional model is
-    served. Absent is null; zero would be a claim."""
+def test_both_outputs_are_stored(seeded_history_db, served_model):
+    """The mean is what to display; the ceiling is what to rank on.
+
+    No single statistic serves both: minimising error pulls the mean toward the
+    centre, and that shrinkage compresses the spread ordering depends on.
+    """
+    generate_predictions(seeded_history_db, "2026/27", 1, served_model)
+    stored = seeded_history_db.scalars(select(Prediction)).all()
+    assert stored
+    for row in stored:
+        assert row.expected_points is not None
+        assert row.floor is not None
+        assert row.median is not None
+        assert row.ceiling is not None
+        assert row.floor <= row.median <= row.ceiling
+
+
+def test_expected_minutes_and_start_probability_are_stored(
+    seeded_history_db, served_model
+):
     generate_predictions(seeded_history_db, "2026/27", 1, served_model)
     for row in seeded_history_db.scalars(select(Prediction)).all():
-        assert row.floor is None
-        assert row.median is None
-        assert row.ceiling is None
+        assert 0.0 <= row.expected_minutes <= 90.0
+        assert 0.0 <= row.start_probability <= 1.0
+        assert row.confidence in {"High", "Medium", "Low"}
 
 
 def test_expected_points_are_never_negative(seeded_history_db, served_model):
