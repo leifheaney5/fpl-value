@@ -259,6 +259,85 @@ no weight decay, no early stopping — which is a far larger capacity than the
 On this evidence it would overfit at least as badly. Regularising the network,
 and reconsidering its L1 points loss, should both precede the full run.
 
+## Nine-fold confirmation of the regularised candidates (2026-08-04)
+
+**Command:** `python -m app.cli evaluate --candidates --output docs/evaluation-regularised.json`
+Same 230,211 examples, same nine folds.
+
+### In-season
+
+| Model | MAE | RMSE | Spearman |
+| --- | ---: | ---: | ---: |
+| **gbdt_abs_d3** | **0.9679** | 2.2338 | 0.6656 |
+| existing_heuristic | 1.0638 | 2.1826 | **0.6899** |
+| gbdt_poisson_d3 | 1.1157 | **2.0613** | 0.6806 |
+| gbdt_sq_d2 | 1.1371 | 2.0646 | 0.6805 |
+
+### Preseason
+
+| Model | MAE | RMSE | Spearman |
+| --- | ---: | ---: | ---: |
+| **gbdt_abs_d3** | **1.1994** | 2.5499 | 0.3060 |
+| minutes_weighted | 1.2862 | 2.3933 | 0.3058 |
+| existing_heuristic | 1.2891 | 2.3933 | 0.3065 |
+| gbdt_poisson_d3 | 1.4965 | 2.3304 | **0.3160** |
+| gbdt_sq_d2 | 1.5039 | 2.3322 | 0.3137 |
+
+### The three-fold result did not replicate
+
+`gbdt_sq_d2` cleared both in-season thresholds on three folds. On nine:
+
+| | Three folds | Nine folds |
+| --- | ---: | ---: |
+| MAE | 1.0537 | 1.1371 |
+| Spearman | 0.6905 | 0.6805 |
+
+Both moved materially in the wrong direction. **This is the third time a
+partial run has pointed the opposite way from the full one.** The screening
+runs are useful only for deciding whether to spend compute; they are never a
+basis for a decision.
+
+## A flaw in how the gate was specified
+
+The gate was written as "beat the best baseline on MAE **and** on Spearman".
+Checking whether anything can satisfy it:
+
+| State | Any model clears both? |
+| --- | --- |
+| In-season | No |
+| Preseason | No — **including the deployed heuristic itself** |
+
+In-season the gate is coherent: `existing_heuristic` posts both the best MAE
+(1.0638) and the best Spearman (0.6899), so the gate means "strictly beat the
+heuristic", which is exactly what was intended.
+
+Preseason it is not. The best MAE belongs to `minutes_weighted` (1.2862) and the
+best Spearman to `fixture_adjusted` (0.3066), which are different models. The
+gate therefore demands beating a composite that no single model achieves. The
+heuristic scores 1.2891 and 0.3065 — it fails its own gate on both counts.
+
+That is a specification error, made when the thresholds were written, and it
+means the preseason gate has been unachievable by construction from the start.
+
+### What the preseason numbers say against the heuristic itself
+
+Comparing candidates to what would actually be replaced:
+
+| Model | MAE vs 1.2891 | Spearman vs 0.3065 |
+| --- | --- | --- |
+| `gbdt_abs_d3` | **1.1994, 7.0% better** | 0.3060, 0.0005 worse |
+| `gbdt_poisson_d3` | 1.4965, 16% worse | **0.3160, 3.1% better** |
+
+Neither strictly dominates. `gbdt_abs_d3` gives materially better point
+estimates with ranking that is indistinguishable from the heuristic at this
+resolution; `gbdt_poisson_d3` ranks better and predicts totals considerably
+worse.
+
+**No gate change has been made.** Relaxing a threshold after seeing which model
+it would admit is the exact failure the gate exists to prevent, and the decision
+belongs to the project owner, not to the person who just ran the numbers. The
+finding is recorded here so it can be decided deliberately.
+
 ## Limitations
 
 These are real and they bound what the numbers above can be read to mean.
@@ -295,9 +374,15 @@ outcome is that the heuristic stays and the model does not ship.
 `scripts/train.py` enforces these thresholds and refuses to write an artefact
 that fails them, so a losing model cannot ship by accident.
 
-**Current status: nothing has cleared the gate.** The deployed
+**Current status: nothing has cleared the gate**, across baselines, three
+gradient-boosted candidates and two rounds of regularisation. The deployed
 `projected_points_5` heuristic remains in use, and the readiness registry
 reports it as the active fallback rather than implying a model is running.
+
+Note the qualification recorded above: the preseason gate is unachievable as
+specified, because it demands beating a composite of two different baselines
+that no single model — including the heuristic — matches. In-season the gate is
+sound and simply has not been met.
 
 Reproduce with:
 
