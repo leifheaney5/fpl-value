@@ -57,3 +57,84 @@ def next_gameweek_projection(snapshot: Any, gameweek: int | None) -> float | Non
         availability=availability,
         fixtures=fixtures,
     )
+
+
+# Below this many expected minutes a captaincy recommendation is not worth
+# making: the doubled downside of a benching outweighs the upside.
+MINUTES_CONFIDENT = 75.0
+MINUTES_TENTATIVE = 60.0
+
+
+def _confidence(expected: float | None, fixture_count: int) -> str:
+    if expected is None:
+        return "Low"
+    if expected >= MINUTES_CONFIDENT and fixture_count >= 1:
+        return "High"
+    if expected >= MINUTES_TENTATIVE:
+        return "Medium"
+    return "Low"
+
+
+def _reasoning(fixtures: list[dict[str, Any]], expected: float | None) -> str:
+    if not fixtures:
+        return "No fixture in this gameweek, so no captaincy case."
+
+    opponents = ", ".join(
+        f"{fixture.get('opponent', '?')} "
+        f"({'H' if fixture.get('is_home') else 'A'})"
+        for fixture in fixtures
+    )
+    parts = []
+    if len(fixtures) == 2:
+        parts.append(f"Plays two fixtures this gameweek: {opponents}")
+    elif len(fixtures) > 2:
+        parts.append(f"Plays {len(fixtures)} fixtures this gameweek: {opponents}")
+    else:
+        parts.append(f"Faces {opponents}")
+
+    if expected is not None:
+        parts.append(f"expected around {expected:.0f} minutes")
+
+    easiest = min((fixture.get("difficulty", 3) for fixture in fixtures), default=3)
+    if easiest <= 2:
+        parts.append("against a low-difficulty opponent")
+    elif easiest >= 4:
+        parts.append("against a high-difficulty opponent")
+
+    return ". ".join(parts) + "."
+
+
+def captain_candidates(
+    snapshots: list[Any], gameweek: int | None, limit: int = 8
+) -> list[dict[str, Any]]:
+    """Rank captaincy options for one gameweek.
+
+    Players whose projection has no basis are excluded rather than ranked last.
+    Ordering them at the bottom would assert they are the worst options, which
+    is a claim the data does not support; their absence is the honest answer.
+    """
+    if gameweek is None:
+        return []
+
+    candidates = []
+    for snapshot in snapshots:
+        projection = next_gameweek_projection(snapshot, gameweek)
+        if projection is None:
+            continue
+        fixtures = fixtures_in_gameweek(snapshot, gameweek)
+        expected = getattr(snapshot, "expected_minutes", None)
+        candidates.append(
+            {
+                "player": getattr(snapshot, "player", None),
+                "projection": projection,
+                "captain_points": round(projection * 2, 2),
+                "fixture_count": len(fixtures),
+                "opponents": fixtures,
+                "expected_minutes": expected,
+                "confidence": _confidence(expected, len(fixtures)),
+                "reasoning": _reasoning(fixtures, expected),
+            }
+        )
+
+    candidates.sort(key=lambda row: row["projection"], reverse=True)
+    return candidates[:limit]
