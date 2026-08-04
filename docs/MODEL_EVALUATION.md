@@ -245,7 +245,48 @@ favourable folds is precisely the error recorded in the correction above. It is
 noted here as promising and is **not** a basis for shipping anything until the
 full nine-fold run confirms it.
 
-### The network remains unevaluated
+## The regularised network is not in contention (2026-08-04)
+
+After adding dropout, weight decay, early stopping and cutting the hidden width
+from 128 to 32, the network was screened on three folds before committing to the
+full run:
+
+| State | Network MAE | Heuristic MAE | Network Spearman | Heuristic Spearman | Ranking gap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Preseason | **1.1358** | 1.1840 | 0.2865 | **0.3356** | −0.0490 |
+| In-season | **0.9058** | 0.9797 | 0.6606 | **0.6985** | −0.0379 |
+
+Both gaps are well outside the −0.02 screening bar, so the full nine-fold run
+was **not** performed. That decision saved several hours and is the screen doing
+its job: deciding whether to spend compute, never deciding what ships.
+
+## The pattern across every model tried
+
+| Model | MAE vs heuristic | Ranking vs heuristic |
+| --- | --- | --- |
+| `gbdt_abs_d3` | better | worse |
+| `gbdt_sq_d2` | worse | worse |
+| `gbdt_poisson_d3` | worse | better (preseason only) |
+| Rank-target tree | n/a | worse |
+| Two-stage network | better | worse |
+
+Nine model configurations across two model classes, three loss functions, two
+regularisation regimes and a direct rank objective. **Every one that improves
+average error degrades ordering.** That consistency is the finding.
+
+The likely mechanism is structural rather than incidental. Minimising pointwise
+error shrinks predictions toward the conditional mean or median — that is what
+minimising error *does* — and shrinkage compresses exactly the spread that rank
+correlation measures. The heuristic does not shrink: it is a fixed monotone
+combination of form, points per game and points per 90, scaled multiplicatively
+by minutes, so it preserves ordering at the cost of calibration.
+
+Capacity has been tested and ruled out. Loss function has been tested and ruled
+out. Model class has been tested and ruled out. The remaining lever is the
+features themselves, which is limitation 1 below: **no model in this evaluation
+can see who the opponent is.**
+
+### The network remains unevaluated at full scale
 
 The two-stage network is built and unit-tested but **has not been scored on the
 full folds**. Training it nine times across two information states on up to
