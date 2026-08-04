@@ -391,16 +391,76 @@ particular model. Under the corrected gate `gbdt_abs_d3` still fails preseason
 change**. What changes is that the preseason gate is now achievable, so future
 work can pay off.
 
+## Opponent strength: built, measured, adds nothing (2026-08-04)
+
+Limitation 1 below — that no model could see who the opponent is — was closed.
+Attack and defence rates are now derived from matches already played, as of the
+start of each gameweek, with opponents resolved through the shared fixture id.
+Coverage is 97.8% from 2021-22 and zero before, where the archive records no
+team names.
+
+A controlled A/B on identical seasons, folds and model, masking the three
+features in place so nothing else varies:
+
+| State | | MAE | Spearman |
+| --- | --- | ---: | ---: |
+| Preseason | without opponent | 1.0813 | 0.3415 |
+| Preseason | with opponent | 1.0862 | 0.3418 |
+| In-season | without opponent | 0.8885 | 0.6627 |
+| In-season | with opponent | 0.8881 | 0.6634 |
+
+**+0.0003 and +0.0007 Spearman.** Nothing. The feature identified as the
+highest-value gap contributes no measurable signal.
+
+The work was still worth doing: the hypothesis was explicit, testable, and is
+now closed rather than lingering as a plausible explanation.
+
+## Everything that has been ruled out
+
+| Hypothesis | How it was tested | Result |
+| --- | --- | --- |
+| Wrong loss function | Squared, absolute, Poisson, and a direct rank target | Each wins one metric and loses the other; none dominates |
+| Insufficient capacity | 200 iterations unlimited depth down to 40 at depth 2 | Smaller is better, but not enough to win |
+| Wrong model class | Gradient-boosted trees and a two-stage neural network | Network is further behind, −0.049 preseason |
+| Missing opponent information | Derived opponent strength, A/B tested | +0.0007 Spearman |
+| Wrong ranking metric | Pooled Spearman versus within-gameweek | 0.3494 versus 0.3487 — no material difference |
+
+Nine model configurations, four objectives, two model classes, two feature sets
+and two metric definitions. **Every learned model that improves average error
+degrades ranking, and none beats the heuristic at ranking under any
+configuration tried.**
+
+### What that leaves
+
+The heuristic is a fixed monotone combination of form, points per game and
+points per 90, scaled multiplicatively by minutes. It never shrinks toward the
+mean. Every trained model does, because that is what minimising error does, and
+shrinkage compresses exactly the spread that rank correlation measures.
+
+This is a property of the objective, not of any particular fit, and it is not
+addressable by tuning. The remaining avenues, in order of expected value:
+
+1. **Rank the distribution's ceiling rather than its centre.** The two-stage
+   network already produces floor, median and ceiling. Ordering players by the
+   90th percentile rather than the mean would not shrink, and no evaluation has
+   scored that. This is cheap and untried.
+2. **Constrain a model to be monotone in the same inputs the heuristic uses.**
+   `HistGradientBoostingRegressor` supports monotonic constraints; forcing
+   points to increase in form and minutes would preserve ordering by
+   construction.
+3. **Use the model for calibration and the heuristic for ordering.** They are
+   good at different things and the application needs both. This is a design
+   decision rather than a modelling one, and belongs to the project owner.
+
 ## Limitations
 
 These are real and they bound what the numbers above can be read to mean.
 
-1. **No fixture difficulty.** The archive does not carry an FDR, so the harness
-   passes a neutral difficulty of 3 for every fixture. The two fixture-aware
-   baselines therefore see only home/away, and their scores understate what
-   fixture information is worth. Deriving an opponent-strength proxy from
-   point-in-time goals scored and conceded would fix this and is the single
-   highest-value improvement to the harness.
+1. ~~**No fixture difficulty.**~~ **Closed 2026-08-04.** Opponent attack and
+   defence are now derived from point-in-time results. Measured contribution:
+   +0.0007 Spearman. The hypothesis was wrong, but it is now closed rather than
+   outstanding. The archive still carries no official FDR, so `fix_difficulty`
+   remains a neutral 3 throughout.
 2. **No calibration measured.** Calibration requires predicted quantiles, and
    point-estimate baselines have none. The metric is implemented and tested;
    it activates when a distributional model exists.

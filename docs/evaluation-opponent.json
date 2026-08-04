@@ -1,0 +1,718 @@
+{
+  "seasons": [
+    "2021/22",
+    "2022/23",
+    "2023/24",
+    "2024/25",
+    "2025/26"
+  ],
+  "generated_at": "2026-08-04T12:22:14.030263+00:00",
+  "by_model": {
+    "season_points_per_game::preseason": {
+      "n": 113582,
+      "mae": 1.2855031954812017,
+      "rmse": 2.301627605507153,
+      "spearman": 0.3426547435394258
+    },
+    "recent_form::preseason": {
+      "n": 113582,
+      "mae": 1.2855031954812017,
+      "rmse": 2.301627605507153,
+      "spearman": 0.3426547435394258
+    },
+    "points_per_90_scaled::preseason": {
+      "n": 113582,
+      "mae": 1.2855031954812017,
+      "rmse": 2.301627605507153,
+      "spearman": 0.34266750260914824
+    },
+    "fixture_adjusted::preseason": {
+      "n": 113582,
+      "mae": 1.292735605139862,
+      "rmse": 2.3047131740784077,
+      "spearman": 0.3428277558298019
+    },
+    "minutes_weighted::preseason": {
+      "n": 113582,
+      "mae": 1.15671109565508,
+      "rmse": 2.2968179046893367,
+      "spearman": 0.3439969394886676
+    },
+    "existing_heuristic::preseason": {
+      "n": 113582,
+      "mae": 1.1690584521748157,
+      "rmse": 2.297939536094277,
+      "spearman": 0.3435461549076787
+    },
+    "gbdt_sq_d2::preseason": {
+      "n": 113582,
+      "mae": 1.4268852526063087,
+      "rmse": 2.261838197079041,
+      "spearman": 0.30213719419761265
+    },
+    "gbdt_poisson_d3::preseason": {
+      "n": 113582,
+      "mae": 1.415891452507654,
+      "rmse": 2.260256906747655,
+      "spearman": 0.3075167086734245
+    },
+    "gbdt_abs_d3::preseason": {
+      "n": 113582,
+      "mae": 1.1152589179571348,
+      "rmse": 2.465245369112269,
+      "spearman": 0.3418277844796471
+    },
+    "season_points_per_game::in_season": {
+      "n": 113582,
+      "mae": 1.0736445414358649,
+      "rmse": 2.074879118775947,
+      "spearman": 0.6570583915843072
+    },
+    "recent_form::in_season": {
+      "n": 113582,
+      "mae": 1.0670448592995732,
+      "rmse": 2.186872308071735,
+      "spearman": 0.6990959623627094
+    },
+    "points_per_90_scaled::in_season": {
+      "n": 113582,
+      "mae": 1.033148441090627,
+      "rmse": 2.0843033142198446,
+      "spearman": 0.7044402005679901
+    },
+    "fixture_adjusted::in_season": {
+      "n": 113582,
+      "mae": 1.080186142378944,
+      "rmse": 2.0777928098975202,
+      "spearman": 0.6572105735203427
+    },
+    "minutes_weighted::in_season": {
+      "n": 113582,
+      "mae": 1.0000220014316097,
+      "rmse": 2.129269511415146,
+      "spearman": 0.6554720318567465
+    },
+    "existing_heuristic::in_season": {
+      "n": 113582,
+      "mae": 0.9735478030294049,
+      "rmse": 2.0907106516282616,
+      "spearman": 0.7088081384560287
+    },
+    "gbdt_sq_d2::in_season": {
+      "n": 113582,
+      "mae": 1.0413801994670255,
+      "rmse": 1.9799530459733652,
+      "spearman": 0.6879334514094521
+    },
+    "gbdt_poisson_d3::in_season": {
+      "n": 113582,
+      "mae": 1.024247899675517,
+      "rmse": 1.9764323904158068,
+      "spearman": 0.691799604959104
+    },
+    "gbdt_abs_d3::in_season": {
+      "n": 113582,
+      "mae": 0.8965266598383126,
+      "rmse": 2.157170182796985,
+      "spearman": 0.6621943660349792
+    }
+  },
+  "folds": [
+    {
+      "train_seasons": [
+        "2021/22"
+      ],
+      "test_season": "2022/23",
+      "information_state": "preseason",
+      "n_examples": 26505,
+      "scores": {
+        "season_points_per_game": {
+          "n": 26505,
+          "mae": 1.3123446055063215,
+          "rmse": 2.3249068723295165,
+          "spearman": 0.33485156403150096,
+          "calibration": null
+        },
+        "recent_form": {
+          "n": 26505,
+          "mae": 1.3123446055063215,
+          "rmse": 2.3249068723295165,
+          "spearman": 0.33485156403150096,
+          "calibration": null
+        },
+        "points_per_90_scaled": {
+          "n": 26505,
+          "mae": 1.3123446055063215,
+          "rmse": 2.3249068723295165,
+          "spearman": 0.33485034753263343,
+          "calibration": null
+        },
+        "fixture_adjusted": {
+          "n": 26505,
+          "mae": 1.3195379370232994,
+          "rmse": 2.3282576684776197,
+          "spearman": 0.33512407601049743,
+          "calibration": null
+        },
+        "minutes_weighted": {
+          "n": 26505,
+          "mae": 1.199682260565114,
+          "rmse": 2.3100682280293516,
+          "spearman": 0.3344826385046672,
+          "calibration": null
+        },
+        "existing_heuristic": {
+          "n": 26505,
+          "mae": 1.2008007248551245,
+          "rmse": 2.309822779485436,
+          "spearman": 0.33453684377711956,
+          "calibration": null
+        },
+        "gbdt_sq_d2": {
+          "n": 26505,
+          "mae": 1.5208980465793585,
+          "rmse": 2.3502317142772187,
+          "spearman": 0.06236876146005329,
+          "calibration": null
+        },
+        "gbdt_poisson_d3": {
+          "n": 26505,
+          "mae": 1.5248201166815105,
+          "rmse": 2.3533206878939423,
+          "spearman": 0.05913919616465702,
+          "calibration": null
+        },
+        "gbdt_abs_d3": {
+          "n": 26505,
+          "mae": 1.210564044519902,
+          "rmse": 2.641876851667669,
+          "spearman": null,
+          "calibration": null
+        }
+      }
+    },
+    {
+      "train_seasons": [
+        "2021/22",
+        "2022/23"
+      ],
+      "test_season": "2023/24",
+      "information_state": "preseason",
+      "n_examples": 29725,
+      "scores": {
+        "season_points_per_game": {
+          "n": 29725,
+          "mae": 1.2355670077494059,
+          "rmse": 2.2385195920760568,
+          "spearman": 0.32956306310946504,
+          "calibration": null
+        },
+        "recent_form": {
+          "n": 29725,
+          "mae": 1.2355670077494059,
+          "rmse": 2.2385195920760568,
+          "spearman": 0.32956306310946504,
+          "calibration": null
+        },
+        "points_per_90_scaled": {
+          "n": 29725,
+          "mae": 1.2355670077494059,
+          "rmse": 2.2385195920760568,
+          "spearman": 0.32956618878545035,
+          "calibration": null
+        },
+        "fixture_adjusted": {
+          "n": 29725,
+          "mae": 1.2429636732717253,
+          "rmse": 2.242190279435359,
+          "spearman": 0.329781853671241,
+          "calibration": null
+        },
+        "minutes_weighted": {
+          "n": 29725,
+          "mae": 1.0896413923666495,
+          "rmse": 2.223974745257871,
+          "spearman": 0.3299910853844995,
+          "calibration": null
+        },
+        "existing_heuristic": {
+          "n": 29725,
+          "mae": 1.1190676444173295,
+          "rmse": 2.2269855259358073,
+          "spearman": 0.3307977270118717,
+          "calibration": null
+        },
+        "gbdt_sq_d2": {
+          "n": 29725,
+          "mae": 1.381934821156136,
+          "rmse": 2.189559143337542,
+          "spearman": 0.33116856030988295,
+          "calibration": null
+        },
+        "gbdt_poisson_d3": {
+          "n": 29725,
+          "mae": 1.3673705749296254,
+          "rmse": 2.193288155503973,
+          "spearman": 0.3315779331239686,
+          "calibration": null
+        },
+        "gbdt_abs_d3": {
+          "n": 29725,
+          "mae": 1.026758091407996,
+          "rmse": 2.345104048200954,
+          "spearman": 0.3132882873901582,
+          "calibration": null
+        }
+      }
+    },
+    {
+      "train_seasons": [
+        "2021/22",
+        "2022/23",
+        "2023/24"
+      ],
+      "test_season": "2024/25",
+      "information_state": "preseason",
+      "n_examples": 27605,
+      "scores": {
+        "season_points_per_game": {
+          "n": 27605,
+          "mae": 1.332095897591687,
+          "rmse": 2.349587073586584,
+          "spearman": 0.34959709015767654,
+          "calibration": null
+        },
+        "recent_form": {
+          "n": 27605,
+          "mae": 1.332095897591687,
+          "rmse": 2.349587073586584,
+          "spearman": 0.34959709015767654,
+          "calibration": null
+        },
+        "points_per_90_scaled": {
+          "n": 27605,
+          "mae": 1.332095897591687,
+          "rmse": 2.349587073586584,
+          "spearman": 0.34960836596367784,
+          "calibration": null
+        },
+        "fixture_adjusted": {
+          "n": 27605,
+          "mae": 1.340192307540156,
+          "rmse": 2.352660808404113,
+          "spearman": 0.34968108776810053,
+          "calibration": null
+        },
+        "minutes_weighted": {
+          "n": 27605,
+          "mae": 1.189825909132597,
+          "rmse": 2.351171547214817,
+          "spearman": 0.3513940404833249,
+          "calibration": null
+        },
+        "existing_heuristic": {
+          "n": 27605,
+          "mae": 1.2034305845586304,
+          "rmse": 2.35242579162945,
+          "spearman": 0.3494038684824837,
+          "calibration": null
+        },
+        "gbdt_sq_d2": {
+          "n": 27605,
+          "mae": 1.412341537684314,
+          "rmse": 2.286791681956929,
+          "spearman": 0.3841169991332706,
+          "calibration": null
+        },
+        "gbdt_poisson_d3": {
+          "n": 27605,
+          "mae": 1.3993699960607482,
+          "rmse": 2.2802532750432376,
+          "spearman": 0.4031506012350296,
+          "calibration": null
+        },
+        "gbdt_abs_d3": {
+          "n": 27605,
+          "mae": 1.1404950986119557,
+          "rmse": 2.4920397966568846,
+          "spearman": 0.3372139300723978,
+          "calibration": null
+        }
+      }
+    },
+    {
+      "train_seasons": [
+        "2021/22",
+        "2022/23",
+        "2023/24",
+        "2024/25"
+      ],
+      "test_season": "2025/26",
+      "information_state": "preseason",
+      "n_examples": 29747,
+      "scores": {
+        "season_points_per_game": {
+          "n": 29747,
+          "mae": 1.2682486846347936,
+          "rmse": 2.2994407502202296,
+          "spearman": 0.35624703840080085,
+          "calibration": null
+        },
+        "recent_form": {
+          "n": 29747,
+          "mae": 1.2682486846347936,
+          "rmse": 2.2994407502202296,
+          "spearman": 0.35624703840080085,
+          "calibration": null
+        },
+        "points_per_90_scaled": {
+          "n": 29747,
+          "mae": 1.2682486846347936,
+          "rmse": 2.2994407502202296,
+          "spearman": 0.3562832526279957,
+          "calibration": null
+        },
+        "fixture_adjusted": {
+          "n": 29747,
+          "mae": 1.2745499930932596,
+          "rmse": 2.301716292835002,
+          "spearman": 0.35636825561523067,
+          "calibration": null
+        },
+        "minutes_weighted": {
+          "n": 29747,
+          "mae": 1.1547129707437032,
+          "rmse": 2.307361179374426,
+          "spearman": 0.35960535673645105,
+          "calibration": null
+        },
+        "existing_heuristic": {
+          "n": 29747,
+          "mae": 1.1588323826129938,
+          "rmse": 2.3076900824293483,
+          "spearman": 0.3588766631097106,
+          "calibration": null
+        },
+        "gbdt_sq_d2": {
+          "n": 29747,
+          "mae": 1.4015321656066904,
+          "rmse": 2.232147261827563,
+          "spearman": 0.41068771817559147,
+          "calibration": null
+        },
+        "gbdt_poisson_d3": {
+          "n": 29747,
+          "mae": 1.3826512483625533,
+          "rmse": 2.2256984929458103,
+          "spearman": 0.416033616868851,
+          "calibration": null
+        },
+        "gbdt_abs_d3": {
+          "n": 29747,
+          "mae": 1.0953570765160043,
+          "rmse": 2.403051640218223,
+          "spearman": 0.3746277979901584,
+          "calibration": null
+        }
+      }
+    },
+    {
+      "train_seasons": [
+        "2021/22"
+      ],
+      "test_season": "2022/23",
+      "information_state": "in_season",
+      "n_examples": 26505,
+      "scores": {
+        "season_points_per_game": {
+          "n": 26505,
+          "mae": 1.1218837804714823,
+          "rmse": 2.095763201969233,
+          "spearman": 0.6467367099511926,
+          "calibration": null
+        },
+        "recent_form": {
+          "n": 26505,
+          "mae": 1.1119632973439573,
+          "rmse": 2.211750496238433,
+          "spearman": 0.6850553738669518,
+          "calibration": null
+        },
+        "points_per_90_scaled": {
+          "n": 26505,
+          "mae": 1.0725460098151935,
+          "rmse": 2.084794259589264,
+          "spearman": 0.6998208342939123,
+          "calibration": null
+        },
+        "fixture_adjusted": {
+          "n": 26505,
+          "mae": 1.128571129282994,
+          "rmse": 2.098147732116771,
+          "spearman": 0.64700332575012,
+          "calibration": null
+        },
+        "minutes_weighted": {
+          "n": 26505,
+          "mae": 1.0089580321039833,
+          "rmse": 2.2245559035061477,
+          "spearman": 0.6374916373144958,
+          "calibration": null
+        },
+        "existing_heuristic": {
+          "n": 26505,
+          "mae": 1.0134734204652895,
+          "rmse": 2.094747617621494,
+          "spearman": 0.7041775829146808,
+          "calibration": null
+        },
+        "gbdt_sq_d2": {
+          "n": 26505,
+          "mae": 1.0721316099660436,
+          "rmse": 1.983883109204087,
+          "spearman": 0.6886980346943855,
+          "calibration": null
+        },
+        "gbdt_poisson_d3": {
+          "n": 26505,
+          "mae": 1.0626022493827654,
+          "rmse": 1.9793159661026145,
+          "spearman": 0.6918663315776452,
+          "calibration": null
+        },
+        "gbdt_abs_d3": {
+          "n": 26505,
+          "mae": 0.9242255188382549,
+          "rmse": 2.158922611342255,
+          "spearman": 0.6582822512866868,
+          "calibration": null
+        }
+      }
+    },
+    {
+      "train_seasons": [
+        "2021/22",
+        "2022/23"
+      ],
+      "test_season": "2023/24",
+      "information_state": "in_season",
+      "n_examples": 29725,
+      "scores": {
+        "season_points_per_game": {
+          "n": 29725,
+          "mae": 1.0131669472274798,
+          "rmse": 2.0324175677394924,
+          "spearman": 0.6432262931778826,
+          "calibration": null
+        },
+        "recent_form": {
+          "n": 29725,
+          "mae": 1.0078567818783224,
+          "rmse": 2.1357375725843326,
+          "spearman": 0.6883817295881975,
+          "calibration": null
+        },
+        "points_per_90_scaled": {
+          "n": 29725,
+          "mae": 0.9736646691081994,
+          "rmse": 2.0246099326186724,
+          "spearman": 0.7007553942502649,
+          "calibration": null
+        },
+        "fixture_adjusted": {
+          "n": 29725,
+          "mae": 1.0192606117957264,
+          "rmse": 2.03461646012809,
+          "spearman": 0.6433851493948792,
+          "calibration": null
+        },
+        "minutes_weighted": {
+          "n": 29725,
+          "mae": 0.9490691889776878,
+          "rmse": 2.0581608256822514,
+          "spearman": 0.6434202334631732,
+          "calibration": null
+        },
+        "existing_heuristic": {
+          "n": 29725,
+          "mae": 0.9096769922456233,
+          "rmse": 2.025498212871814,
+          "spearman": 0.7041707981803904,
+          "calibration": null
+        },
+        "gbdt_sq_d2": {
+          "n": 29725,
+          "mae": 0.9872974913074599,
+          "rmse": 1.935021547840059,
+          "spearman": 0.6707548216369239,
+          "calibration": null
+        },
+        "gbdt_poisson_d3": {
+          "n": 29725,
+          "mae": 0.9641211099785848,
+          "rmse": 1.9211015511525784,
+          "spearman": 0.6801467707621045,
+          "calibration": null
+        },
+        "gbdt_abs_d3": {
+          "n": 29725,
+          "mae": 0.8358928194431925,
+          "rmse": 2.092667944703779,
+          "spearman": 0.6534409145441029,
+          "calibration": null
+        }
+      }
+    },
+    {
+      "train_seasons": [
+        "2021/22",
+        "2022/23",
+        "2023/24"
+      ],
+      "test_season": "2024/25",
+      "information_state": "in_season",
+      "n_examples": 27605,
+      "scores": {
+        "season_points_per_game": {
+          "n": 27605,
+          "mae": 1.102814607331244,
+          "rmse": 2.111372712346749,
+          "spearman": 0.6557018144314221,
+          "calibration": null
+        },
+        "recent_form": {
+          "n": 27605,
+          "mae": 1.104821476507894,
+          "rmse": 2.232635496309624,
+          "spearman": 0.6961280490354554,
+          "calibration": null
+        },
+        "points_per_90_scaled": {
+          "n": 27605,
+          "mae": 1.078266064836228,
+          "rmse": 2.1786080573192526,
+          "spearman": 0.6815367022612974,
+          "calibration": null
+        },
+        "fixture_adjusted": {
+          "n": 27605,
+          "mae": 1.1098641878604572,
+          "rmse": 2.115205300587647,
+          "spearman": 0.6557422392264187,
+          "calibration": null
+        },
+        "minutes_weighted": {
+          "n": 27605,
+          "mae": 1.0467572954117437,
+          "rmse": 2.159012399442149,
+          "spearman": 0.6558296115617659,
+          "calibration": null
+        },
+        "existing_heuristic": {
+          "n": 27605,
+          "mae": 1.0217328105312908,
+          "rmse": 2.1871494139032603,
+          "spearman": 0.6866723282732742,
+          "calibration": null
+        },
+        "gbdt_sq_d2": {
+          "n": 27605,
+          "mae": 1.0842454492161444,
+          "rmse": 2.058405991304026,
+          "spearman": 0.6868668052851868,
+          "calibration": null
+        },
+        "gbdt_poisson_d3": {
+          "n": 27605,
+          "mae": 1.0792158968264056,
+          "rmse": 2.07728997931633,
+          "spearman": 0.6840787454766092,
+          "calibration": null
+        },
+        "gbdt_abs_d3": {
+          "n": 27605,
+          "mae": 0.9474405934590607,
+          "rmse": 2.262144289232665,
+          "spearman": 0.6358736493532717,
+          "calibration": null
+        }
+      }
+    },
+    {
+      "train_seasons": [
+        "2021/22",
+        "2022/23",
+        "2023/24",
+        "2024/25"
+      ],
+      "test_season": "2025/26",
+      "information_state": "in_season",
+      "n_examples": 29747,
+      "scores": {
+        "season_points_per_game": {
+          "n": 29747,
+          "mae": 1.064025950928024,
+          "rmse": 2.0648354615667674,
+          "spearman": 0.6813359190365572,
+          "calibration": null
+        },
+        "recent_form": {
+          "n": 29747,
+          "mae": 1.051109769473526,
+          "rmse": 2.1733345000137043,
+          "spearman": 0.7250668372308063,
+          "calibration": null
+        },
+        "points_per_90_scaled": {
+          "n": 29747,
+          "mae": 1.015615599447292,
+          "rmse": 2.0560009922317204,
+          "spearman": 0.7334924828702413,
+          "calibration": null
+        },
+        "fixture_adjusted": {
+          "n": 29747,
+          "mae": 1.0704138921747937,
+          "rmse": 2.068082182875436,
+          "spearman": 0.6814831792440434,
+          "calibration": null
+        },
+        "minutes_weighted": {
+          "n": 29747,
+          "mae": 0.9996049868385398,
+          "rmse": 2.0878228928335356,
+          "spearman": 0.6832038729443948,
+          "calibration": null
+        },
+        "existing_heuristic": {
+          "n": 29747,
+          "mae": 0.9570817469000551,
+          "rmse": 2.062783395964948,
+          "spearman": 0.7381098110418937,
+          "calibration": null
+        },
+        "gbdt_sq_d2": {
+          "n": 29747,
+          "mae": 1.028244325108005,
+          "rmse": 1.948545808276433,
+          "spearman": 0.7054079616552442,
+          "calibration": null
+        },
+        "gbdt_poisson_d3": {
+          "n": 29747,
+          "mae": 0.9991460481745398,
+          "rmse": 1.9355578915393372,
+          "spearman": 0.7105492682359267,
+          "calibration": null
+        },
+        "gbdt_abs_d3": {
+          "n": 29747,
+          "mae": 0.8851878192947522,
+          "rmse": 2.122648069661919,
+          "spearman": 0.6988525275628077,
+          "calibration": null
+        }
+      }
+    }
+  ]
+}
