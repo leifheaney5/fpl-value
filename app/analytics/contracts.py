@@ -20,6 +20,10 @@ class MetricStatus:
 
     VALUE = "value"
     REAL_ZERO = "real_zero"
+    # A real measurement, but of the *previous* season. In preseason the FPL
+    # API keeps serving last season's counting stats, so a rate derived from
+    # them is meaningful and must not be presented as this season's.
+    PREVIOUS_SEASON = "previous_season"
     MISSING = "missing"
     NOT_YET_AVAILABLE = "not_yet_available"
     NOT_APPLICABLE = "not_applicable"
@@ -30,7 +34,12 @@ class MetricStatus:
     SUPPRESSED_LOW_CONFIDENCE = "suppressed_low_confidence"
 
 
-VALUE_STATUSES = frozenset({MetricStatus.VALUE, MetricStatus.REAL_ZERO})
+VALUE_STATUSES = frozenset(
+    {MetricStatus.VALUE, MetricStatus.REAL_ZERO, MetricStatus.PREVIOUS_SEASON}
+)
+
+# Renders as a number, but the interface must say which season it describes.
+QUALIFIED_STATUSES = frozenset({MetricStatus.PREVIOUS_SEASON})
 
 STATUS_LABELS = {
     MetricStatus.MISSING: "Not available",

@@ -120,17 +120,35 @@ def test_carried_over_minutes_do_not_become_current_season_rates(tmp_path):
         assert snapshot.total_points == 43
         assert snapshot.team_matches == 0
 
-        # Every rate derived from them is unavailable, because no match has been
-        # played this season and the inputs therefore describe a different one.
-        assert snapshot.points_per_90 is None
-        assert snapshot.points_per_minute is None
-        assert snapshot.points_per_start is None
-        assert snapshot.average_minutes_per_start is None
-        assert snapshot.value is None
-        assert snapshot.start_rate is None
+        # Rates computable from the carry-over figures alone are available, and
+        # every one of them is marked as describing the previous season. They
+        # were suppressed until 2026-08-04 on the grounds that they would be
+        # "presented as though they described this one" -- which is a statement
+        # about presentation, and is now handled by the status and by the
+        # column labelling on the sheet. The measurements themselves were always
+        # sound; withholding points-per-million in particular removed the single
+        # most useful preseason evaluation metric.
+        for metric in (
+            "value", "points_per_90", "points_per_minute", "points_per_start",
+            "average_minutes_per_start",
+        ):
+            assert getattr(snapshot, metric) is not None, f"{metric} should be available"
 
-        reason = snapshot.metric_status["points_per_90"]["reason"]
-        assert "No matches played" in reason
+        # Only the metrics the interface renders through metric_cell carry a
+        # status entry; those are the ones that must name their season.
+        for metric in ("value", "points_per_90"):
+            assert snapshot.metric_status[metric]["status"] == "previous_season", (
+                f"{metric} must say which season it describes"
+            )
+
+        # Rates needing a this-season quantity have no denominator in any form:
+        # team_matches is zero and the API does not report last season's.
+        assert snapshot.start_rate is None
+        assert snapshot.points_per_team_match is None
+        assert snapshot.expected_minutes is None
+
+        assert "last season" in snapshot.metric_status["points_per_90"]["reason"].lower()
+        assert "No matches played" in snapshot.metric_status["start_rate"]["reason"]
 
 
 def test_preseason_refresh_records_the_season_calendar(tmp_path):

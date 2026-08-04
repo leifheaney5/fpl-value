@@ -70,6 +70,15 @@ def _metric(snapshot: Any, name: str) -> MetricValue:
     )
 
 
+def _previous_season(season: str) -> str:
+    """"2026/27" -> "2025/26". Used to name the season carry-over data describes."""
+    try:
+        start = int(season.split("/")[0])
+    except (ValueError, AttributeError, IndexError):
+        return "last season"
+    return f"{start - 1}/{str(start)[-2:]}"
+
+
 def _metric_cell(snapshot: Any, name: str, short: str = "—") -> str:
     """Render a metric for a dense table.
 
@@ -256,8 +265,40 @@ def spreadsheet(
                 and (advanced["min_reliable_percentile"] is None or (row["snapshot"].reliable_percentile or 0) >= advanced["min_reliable_percentile"])
                 and (advanced["min_forward_percentile"] is None or (row["snapshot"].forward_percentile or 0) >= advanced["min_forward_percentile"])]
     title, description, _ = views[view]
+
+    # Counting stats carry over from last season until a match is played, so
+    # say which season the sheet is describing rather than letting last
+    # season's totals read as this one's.
+    carry_over = any(
+        (row["snapshot"].team_matches or 0) == 0
+        and ((row["snapshot"].total_points or 0) > 0 or (row["snapshot"].minutes or 0) > 0)
+        for row in rows
+    )
+
+    # Each tab is only a different sort key. When that key is null for every
+    # player the tab silently renders the same list in the same order, which
+    # reads as a broken control rather than as missing data.
+    #
+    # Movement sorts do not live on the snapshot: they come from the history
+    # deltas, so checking getattr(snapshot, "value_movement") would report the
+    # Movers tab as permanently unsortable.
+    sort_key = views[view][2]
+    if view == "all":
+        sortable = True
+    elif sort_key == "value_movement":
+        sortable = any(
+            (row.get("history") or {}).get("1D", {}).get("delta_value") is not None
+            for row in rows
+        )
+    else:
+        sortable = any(
+            getattr(row["snapshot"], sort_key, None) is not None for row in rows
+        )
+
     return templates.TemplateResponse(request=request, name="spreadsheet.html", context={
         "rows": rows, "view": view, "view_title": title, "view_description": description,
+        "carry_over": carry_over, "previous_season": _previous_season(settings.current_season),
+        "sortable": sortable, "sort_key_label": sort_key.replace("_", " "),
         "position": position or "", "status": status or "", "sort": effective_sort,
         **values, **advanced,
     })

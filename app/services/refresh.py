@@ -163,12 +163,23 @@ def _status(
     metric: str,
     reason_when_null: str,
     has_sample: bool,
+    previous_season: bool = False,
 ) -> dict[str, str]:
     """Record why a metric holds its value.
 
     A stored 0.0 is only a measurement when there was something to measure;
     otherwise it is an absence that happens to look like a number.
+
+    ``previous_season`` marks a real measurement that describes the season just
+    finished. The FPL API keeps serving last season's counting stats until the
+    new season starts, so these are genuine numbers about the wrong season --
+    useful, but only if the interface says so.
     """
+    if value is not None and previous_season:
+        return {
+            "status": MetricStatus.PREVIOUS_SEASON,
+            "reason": "From last season; no match has been played in this one",
+        }
     if value is None:
         contract = CONTRACTS.get(metric)
         return {
@@ -469,14 +480,40 @@ def refresh_data(
             no_matches_reason = "No matches played yet this season"
             no_minutes_reason = "No minutes played yet this season"
 
-            # Points per million is a rate, and before any match is played there
-            # is no opportunity in the denominator. Every player would score
-            # exactly 0.00 and be ranked on it, which reads as "poor value"
-            # rather than "the season has not started".
-            value = points / price if price > 0 and has_matches else None
-            p90 = points * 90.0 / minutes if has_minutes else None
-            ppm = points / minutes if has_minutes else None
-            pps = points / starts if has_starts else None
+            # Carry-over: no fixture has been played this season, yet the API
+            # still reports last season's counting stats. These rates used to be
+            # suppressed entirely, on the reasoning that they would describe a
+            # finished season while being labelled as this one. The second half
+            # of that was the real objection, and it is a presentation problem:
+            # the numbers themselves are sound measurements of last season.
+            #
+            # They are now computed and carry MetricStatus.PREVIOUS_SEASON, and
+            # the interface names the season they describe. The line is drawn on
+            # the denominator, not on convenience:
+            #
+            #   computable from carry-over alone -> value, p90, ppm, pps
+            #   needs a this-season quantity     -> start_rate, pptm, everything
+            #                                       derived from team_matches
+            #
+            # Making only `value` an exception would have reproduced the exact
+            # inconsistency that exposed the recommender bug: one rate present
+            # and its neighbours absent, with no principle separating them.
+            carry_over = not has_matches and (points > 0 or minutes > 0)
+            has_carry_minutes = carry_over and minutes > 0
+            has_carry_starts = carry_over and starts > 0
+
+            value = (
+                points / price if price > 0 and (has_matches or carry_over) else None
+            )
+            p90 = (
+                points * 90.0 / minutes
+                if has_minutes or has_carry_minutes
+                else None
+            )
+            ppm = points / minutes if has_minutes or has_carry_minutes else None
+            pps = points / starts if has_starts or has_carry_starts else None
+            # team_matches is zero in preseason and the API does not report last
+            # season's, so these have no denominator in any form.
             pptm = points / matches if has_matches else None
             start_rate = 100.0 * starts / matches if has_matches else None
             mptm = minutes / matches if has_matches else None
@@ -573,7 +610,7 @@ def refresh_data(
                     "value_per_90": _round(value_p90, 3),
                     "start_rate": _round(start_rate, 1),
                     "minutes_per_team_match": _round(mptm, 2),
-                    "average_minutes_per_start": round(minutes / starts, 2) if has_starts else None,
+                    "average_minutes_per_start": round(minutes / starts, 2) if has_starts or has_carry_starts else None,
                     "expected_goals": safe_float(
                         item.get("expected_goals")
                     ),
@@ -608,7 +645,10 @@ def refresh_data(
                     "upcoming_fixtures": next_fixtures,
                     "season": settings.current_season,
                     "metric_status": {
-                        "value": _status(value, "value", no_matches_reason, has_matches),
+                        "value": _status(
+                            value, "value", no_matches_reason,
+                            has_matches or carry_over, previous_season=carry_over,
+                        ),
                         "reliability_factor": _status(
                             reliable_factor, "reliability_factor", no_matches_reason, has_matches
                         ),
@@ -623,6 +663,7 @@ def refresh_data(
                             "points_per_90",
                             no_matches_reason if not has_matches else no_minutes_reason,
                             has_minutes,
+                            previous_season=carry_over,
                         ),
                         "expected_minutes": _status(
                             exp_minutes, "expected_minutes", no_matches_reason, has_matches

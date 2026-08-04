@@ -200,3 +200,21 @@ footer { border-top: 1px solid var(--line); color: var(--muted); text-align: cen
 .movement.no-change { color: var(--gray); background: rgba(135,149,161,.15); }
 .movement.no-history { color: var(--gray); background: transparent; }
 .period-tabs { display: flex; gap: .6rem; margin-bottom: 1rem; }
+
+/* Carry-over season labelling. A number from a finished season is still a
+   real number, so it renders -- but the column must say which season. */
+.sheet-note-warning {
+  border-left: 3px solid #f0b429;
+  padding-left: .75rem;
+  margin-top: .5rem;
+}
+.season-tag {
+  font-size: .68em;
+  font-weight: 600;
+  letter-spacing: .02em;
+  opacity: .75;
+  padding: .05em .3em;
+  border: 1px solid currentColor;
+  border-radius: .25em;
+  white-space: nowrap;
+}

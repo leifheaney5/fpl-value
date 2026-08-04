@@ -19,7 +19,7 @@ from app.db.session import get_db
 from app.main import app
 from app.services.refresh import refresh_data
 
-from fakes import FakeClient, PreseasonClient
+from fakes import CarryOverPreseasonClient, FakeClient, PreseasonClient
 
 
 PAGES = [
@@ -144,5 +144,45 @@ def test_exports_leave_unavailable_metrics_empty_rather_than_zero(tmp_path):
                 f"the export wrote {cells.get(column)!r} for {column}, "
                 "which has no value"
             )
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_points_per_million_is_shown_and_labelled_as_last_season(tmp_path):
+    """The stat was withheld on reasoning that no longer held.
+
+    It was suppressed because "every player would score exactly 0.00" before a
+    match is played. That assumed total_points was zero; in preseason the FPL
+    API still serves last season's total, which the same row displays. So the
+    rate is real -- it just describes the previous season, and must say so.
+
+    Unlike points-per-game, this cannot be inflated by a small sample: it
+    divides a season total by price, so one lucky appearance ranks near the
+    bottom rather than the top.
+    """
+    client, Session = _seeded_client(tmp_path, CarryOverPreseasonClient, "ppm.db")
+    try:
+        from app.services.queries import latest_rows
+
+        with Session() as db:
+            rows = latest_rows(db, "2026/27")
+        snapshot = rows[0]["snapshot"]
+        assert snapshot.value is not None, "points-per-million should be available"
+        assert snapshot.metric_status["value"]["status"] == "previous_season"
+
+        body = client.get("/spreadsheet").text
+        assert "describe" in body and "2025/26" in body, (
+            "the sheet must name the season its counting stats describe"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_a_tab_that_cannot_sort_says_so(tmp_path):
+    """Each tab is only a sort key; a null key renders the same list silently."""
+    client, _ = _seeded_client(tmp_path, PreseasonClient, "tabs.db")
+    try:
+        body = client.get("/spreadsheet?view=forward").text
+        assert "unchanged from All Players" in body
     finally:
         app.dependency_overrides.clear()
