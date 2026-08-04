@@ -333,10 +333,22 @@ estimates with ranking that is indistinguishable from the heuristic at this
 resolution; `gbdt_poisson_d3` ranks better and predicts totals considerably
 worse.
 
-**No gate change has been made.** Relaxing a threshold after seeing which model
-it would admit is the exact failure the gate exists to prevent, and the decision
-belongs to the project owner, not to the person who just ran the numbers. The
-finding is recorded here so it can be decided deliberately.
+### Gate corrected, 2026-08-04
+
+The specification error was put to the project owner and the gate has been
+corrected to what it was always intended to mean: **a model must beat the
+deployed heuristic**, since that is what it would replace.
+
+| State | MAE below | Spearman above | Source |
+| --- | ---: | ---: | --- |
+| In-season | 1.0638 | 0.6899 | `existing_heuristic` (unchanged — it was already the best on both) |
+| Preseason | 1.2891 | 0.3065 | `existing_heuristic` (was 1.2862 / 0.3066, a composite of two other baselines) |
+
+This is a correction to a mis-specification, not a relaxation to admit a
+particular model. Under the corrected gate `gbdt_abs_d3` still fails preseason
+— Spearman 0.3060 against 0.3065 — so **nothing ships as a result of this
+change**. What changes is that the preseason gate is now achievable, so future
+work can pay off.
 
 ## Limitations
 
@@ -362,10 +374,15 @@ These are real and they bound what the numbers above can be read to mean.
 ## The ship gate
 
 A trained model replaces the deployed heuristic only if, on held-out seasons,
-it beats:
+it beats **the heuristic itself** on both metrics:
 
 - **In-season:** MAE below 1.0638 **and** Spearman above 0.6899.
-- **Preseason:** MAE below 1.2862 **and** Spearman above 0.3066.
+- **Preseason:** MAE below 1.2891 **and** Spearman above 0.3065.
+
+The preseason thresholds were corrected on 2026-08-04 from 1.2862 / 0.3066,
+which were the best MAE and best Spearman across *different* baselines and so
+described a composite no single model could match. See "A flaw in how the gate
+was specified" above.
 
 If it wins one state and loses the other, it ships only for the state it wins,
 selected by information state at prediction time. If it loses both, the honest

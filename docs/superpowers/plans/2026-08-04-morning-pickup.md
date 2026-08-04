@@ -30,7 +30,7 @@ Read these two documents before starting anything:
 - Point the CLI at the local training database: `DATABASE_URL="sqlite:///./data/local.db"`.
 - The ship gate, copied verbatim from `docs/MODEL_EVALUATION.md`:
   - In-season: MAE below **1.0638** and Spearman above **0.6899**
-  - Preseason: MAE below **1.2862** and Spearman above **0.3066**
+  - Preseason: MAE below **1.2891** and Spearman above **0.3065** (corrected 2026-08-04; the previous 1.2862 / 0.3066 combined two different baselines and was unachievable)
 - A model must clear **both** thresholds in a state to ship for that state.
 - **Never conclude from fewer than the full nine folds.** This has produced a wrong answer twice already; see "Lessons already paid for" below.
 - `torch` must never be imported by anything the web application loads. `tests/test_artefact.py::test_serving_does_not_import_torch` enforces it in a subprocess.

@@ -39,11 +39,16 @@ from app.models.metrics import summarise  # noqa: E402
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger("train")
 
-# Copied verbatim from docs/MODEL_EVALUATION.md. A model must beat the best
-# baseline on both accuracy and ranking to replace it.
+# Copied verbatim from docs/MODEL_EVALUATION.md. A model must beat the deployed
+# heuristic on both accuracy and ranking to replace it.
+#
+# The preseason thresholds were corrected on 2026-08-04. They previously held
+# the best MAE and best Spearman across *different* baselines, which described a
+# composite no single model could match -- the heuristic itself failed it on
+# both counts, so the gate was unachievable by construction.
 GATE = {
     InformationState.IN_SEASON: {"mae": 1.0638, "spearman": 0.6899},
-    InformationState.PRESEASON: {"mae": 1.2862, "spearman": 0.3066},
+    InformationState.PRESEASON: {"mae": 1.2891, "spearman": 0.3065},
 }
 
 
