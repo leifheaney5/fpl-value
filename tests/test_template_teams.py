@@ -12,7 +12,11 @@ def _rows():
             rows.append({
                 "player": SimpleNamespace(id=player_id, full_name=f"Player {player_id}", web_name=f"P{player_id}", position_short=position),
                 "team": SimpleNamespace(id=(player_id % 6) + 1, short_name=f"T{player_id % 6}"),
-                "snapshot": SimpleNamespace(price=5.0 + (index * 0.2), projected_points_5=25.0 - index, total_points=100 - index, reliable_value=10.0 - index / 10, forward_value=8.0 - index / 10, availability_factor=1.0, rotation_risk=10.0, captured_at=datetime.now(timezone.utc)),
+                # expected_minutes is required for a projection to exist at all:
+                # project_next_fixtures returns None without it, so a snapshot
+                # carrying projected_points_5 and no expected minutes is a state
+                # the refresh pipeline cannot produce.
+                "snapshot": SimpleNamespace(price=5.0 + (index * 0.2), projected_points_5=25.0 - index, total_points=100 - index, reliable_value=10.0 - index / 10, forward_value=8.0 - index / 10, availability_factor=1.0, expected_minutes=85.0, upcoming_fixture_count=5, rotation_risk=10.0, captured_at=datetime.now(timezone.utc)),
             })
             player_id += 1
     return rows

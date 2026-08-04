@@ -58,12 +58,22 @@ def _projected_output(row: dict[str, Any]) -> float | None:
     Returning 0.0 for an unprojectable player used to make every player look
     identical in preseason, which handed the squad choice to an arbitrary
     tie-breaker.
+
+    There used to be a second escape here: when ``projected_points_5`` was null
+    this fell back to ``points_per_game * 5``. In preseason the FPL API still
+    serves *last season's* counting stats, so that fallback silently forecast a
+    finished season -- and ``points_per_game`` is a rate with no sample-size
+    behind it. On 2026-08-04 the live deployment ranked a third-choice keeper
+    (7 points from one 90-minute appearance, rate 7.0) above Haaland (239
+    points from 2953 minutes, rate 6.8), selected him, and captained him.
+
+    The fallback is gone. A player with no projection has no projected output,
+    the readiness checks in ``validate_pool`` then fail honestly, and
+    ``/recommendation`` shows its not-ready panel until a match has been
+    played. See docs/RECOMMENDER_AUDIT.md.
     """
     snapshot = row["snapshot"]
     projected = getattr(snapshot, "projected_points_5", None)
-    if projected is None:
-        points_per_game = getattr(snapshot, "points_per_game", None)
-        projected = None if not points_per_game else float(points_per_game) * 5
     if projected is None:
         return None
 
@@ -71,10 +81,14 @@ def _projected_output(row: dict[str, Any]) -> float | None:
     if availability is None or availability <= 0:
         return 0.0
 
+    # Unknown minutes must not read as full minutes. ``projected_points_5`` is
+    # itself null without an expected-minutes estimate, so this is belt and
+    # braces -- but defaulting the unknown case to 1.0 was a fail-open in an
+    # application whose whole premise is that missing is not zero.
     expected_minutes = getattr(snapshot, "expected_minutes", None)
-    minutes_factor = (
-        min(float(expected_minutes) / 450, 1.0) if expected_minutes else 1.0
-    )
+    if expected_minutes is None:
+        return None
+    minutes_factor = min(float(expected_minutes) / 450, 1.0)
     return float(projected) * (.70 + (.30 * minutes_factor)) * float(availability)
 
 
@@ -160,6 +174,31 @@ def _score(row: dict[str, Any], strategy: str = "best_team") -> float:
     )
 
 
+def _captaincy_pair(
+    starting: list[dict[str, Any]]
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Pick the captain and vice-captain from the outfield players only.
+
+    A goalkeeper is excluded on position, not on projection. Doubling a
+    keeper's score is close to always wrong -- they cannot attack, and their
+    ceiling is a clean sheet plus save points -- so this must not depend on the
+    numbers happening to rank someone else first. On 2026-08-04 they did not:
+    the live deployment captained a third-choice keeper.
+    """
+    outfield = [
+        row for row in starting if row["player"].position_short != "GKP"
+    ]
+    # A legal XI always contains ten outfield players; fall back rather than
+    # raise if a caller ever passes a partial lineup.
+    pool = outfield or starting
+    if not pool:
+        return None, None
+    captain = max(pool, key=_output_or_zero)
+    others = [row for row in pool if row["player"].id != captain["player"].id]
+    vice_captain = max(others, key=_output_or_zero) if others else captain
+    return captain, vice_captain
+
+
 def _best_lineup(selected: list[dict[str, Any]], strategy: str) -> tuple[str | None, list[dict[str, Any]], float]:
     by_position = {
         position: sorted(
@@ -176,7 +215,7 @@ def _best_lineup(selected: list[dict[str, Any]], strategy: str) -> tuple[str | N
         starting = by_position["GKP"][:1] + by_position["DEF"][:shape["DEF"]] + by_position["MID"][:shape["MID"]] + by_position["FWD"][:shape["FWD"]]
         if len(starting) != 11:
             continue
-        captain = max(starting, key=_output_or_zero)
+        captain, _ = _captaincy_pair(starting)
         score = sum(_output_or_zero(row) for row in starting) + _output_or_zero(captain)
         if strategy in {"safe", "best_team"}:
             score += sum(_score(row, strategy) for row in starting) * .05
@@ -440,8 +479,7 @@ def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: 
     spent, score, selected, _ = max(states, key=team_objective)
     best_formation, best_starting, lineup_score = _best_lineup(selected, strategy)
     starting_ids = {row["player"].id for row in best_starting}
-    captain = max(best_starting, key=_output_or_zero)
-    vice_captain = max((row for row in best_starting if row["player"].id != captain["player"].id), key=_output_or_zero)
+    captain, vice_captain = _captaincy_pair(best_starting)
 
     def decorate(row: dict[str, Any], role: str) -> dict[str, Any]:
         snapshot = row["snapshot"]
@@ -450,7 +488,20 @@ def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: 
         if snapshot.reliable_value and snapshot.reliable_value >= 5: reasons.append("reliable value")
         if snapshot.rotation_risk is not None and snapshot.rotation_risk <= 25: reasons.append("secure minutes")
         if strategy == "differential" and float(getattr(snapshot, "ownership", 0) or 0) <= 10: reasons.append("low ownership")
-        return {"row": row, "role": role, "score": _score(row, strategy), "reason": ", ".join(reasons[:2]) or "best available fit", "captain": row["player"].id == captain["player"].id, "vice_captain": row["player"].id == vice_captain["player"].id}
+        if not reasons:
+            # "best available fit" used to sit here. Every threshold above reads
+            # a metric that is null before a match is played, so in preseason
+            # all fifteen players carried that one string -- which reads as a
+            # judgement while carrying no information. State the number the
+            # selection was actually made on instead.
+            projected_value = _projected_output(row)
+            reasons.append(
+                f"projected {projected_value:.1f} over the next "
+                f"{snapshot.upcoming_fixture_count or 0} fixtures"
+                if projected_value is not None
+                else "no measured basis; included to satisfy squad rules"
+            )
+        return {"row": row, "role": role, "score": _score(row, strategy), "reason": ", ".join(reasons[:2]), "captain": row["player"].id == captain["player"].id, "vice_captain": row["player"].id == vice_captain["player"].id}
 
     remaining = round(budget - spent / 10, 1)
     best_excluded, marginal_gain = _best_excluded(
