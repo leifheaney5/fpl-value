@@ -509,6 +509,43 @@ thresholds, which this does not do and, on the above, cannot. Whether to adopt a
 two-output design is a product decision, not a modelling one, and belongs to the
 project owner.
 
+## Trained artefacts clear the corrected gate (2026-08-04)
+
+Trained on nine seasons (224,143 rows), holding out 2025/26 (29,747 rows), with
+each output judged on the metric it serves.
+
+| State | Displayed total MAE | Gate | Ranking ceiling Spearman | Gate | |
+| --- | ---: | ---: | ---: | ---: | --- |
+| In-season | **0.8682** | < 1.0638 | **0.7179** | > 0.6899 | clears |
+| Preseason | **1.1065** | < 1.2891 | **0.3848** | > 0.3065 | clears |
+
+Both artefacts were written, both serve, and `generate_predictions` produced 497
+rows carrying expected points, floor, median, ceiling, expected minutes, start
+probability and a confidence reading.
+
+The ceiling now *beats* the heuristic's ranking rather than tying it — 0.7179
+against 0.6899 in-season — on a larger training set than the screening runs used.
+
+### This is one holdout season, not the nine-fold result
+
+`scripts/train.py` checks the gate against a single held-out season. The
+trustworthy number is the nine-fold walk-forward, and **it has not been re-run
+with ranking judged on the ceiling.** The earlier nine-fold verdict of "not in
+contention" scored the network's *mean*, which is the statistic now known to be
+the wrong one for ranking.
+
+A single favourable holdout has already misled three times in this document.
+Until the nine-fold run confirms it, these artefacts are **not** cleared for
+deployment. That run is the next task.
+
+### A practical note on ties
+
+FPL points are discrete, so predicted ceilings cluster on a few values — the top
+ten for gameweek 1 spanned 3.67 to 4.33, with several exact ties. Ranking on the
+ceiling alone therefore leaves the leaderboard coarse at the top. Expected points
+varies more finely and is the natural tiebreak; the interface should order by
+ceiling, then by expected points.
+
 ## Limitations
 
 These are real and they bound what the numbers above can be read to mean.
