@@ -73,8 +73,13 @@ def test_every_page_renders_with_preseason_data(tmp_path, path):
 
 
 @pytest.mark.parametrize("path", PAGES)
-def test_every_page_renders_with_in_season_data(tmp_path, path):
-    client, _ = _seeded_client(tmp_path, FakeClient, "live.db")
+def test_every_page_renders_with_postseason_data(tmp_path, path):
+    """``FakeClient``'s only gameweek is finished, which is postseason.
+
+    This was called ``..._with_in_season_data`` and was read as covering the
+    live season for months. It does not: see tests/test_in_season_rendering.py.
+    """
+    client, _ = _seeded_client(tmp_path, FakeClient, "post.db")
     try:
         assert client.get(path).status_code == 200
     finally:

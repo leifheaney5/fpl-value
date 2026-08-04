@@ -1,9 +1,10 @@
 """Stub FPL clients shared across tests.
 
-``FakeClient`` represents a season in progress: one fixture played, real minutes
-and points recorded. ``PreseasonClient`` represents the state the live
-deployment is actually in today: fixtures scheduled, none played, every counting
-stat still zero.
+``FakeClient`` has one finished gameweek and no unfinished successor, which
+``season_state()`` classifies as **postseason** -- not a season in progress. For
+a live season use ``LiveClient`` and its subclasses below.
+``PreseasonClient`` represents the state the live deployment is in today:
+fixtures scheduled, none played, every counting stat still zero.
 """
 
 from __future__ import annotations
