@@ -21,6 +21,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.analytics.contracts import MetricValue, describe
+from app.analytics.metrics import sample_confidence
 from app.api.fpl_client import FPLClient
 from app.config import Settings, get_settings
 from app.db.models import Player
@@ -79,6 +80,21 @@ def _previous_season(season: str) -> str:
     return f"{start - 1}/{str(start)[-2:]}"
 
 
+def _sample_mark(snapshot: Any) -> str:
+    """A compact marker for how much sample sits behind this row's rates.
+
+    Rendered next to rate columns so a 90-minute PPG cannot be read with the
+    same weight as a 3000-minute one. Deliberately not a number: the exact
+    minute count is already a column, and what is needed here is a glance.
+    """
+    level, _ = sample_confidence(snapshot)
+    return {"high": "", "medium": "·", "low": "⚠", "none": ""}[level]
+
+
+def _sample_title(snapshot: Any) -> str:
+    return sample_confidence(snapshot)[1]
+
+
 def _metric_cell(snapshot: Any, name: str, short: str = "—") -> str:
     """Render a metric for a dense table.
 
@@ -94,6 +110,8 @@ templates.env.filters["metric"] = _metric
 templates.env.filters["metric_cell"] = _metric_cell
 templates.env.globals["metric"] = _metric
 templates.env.globals["metric_cell"] = _metric_cell
+templates.env.globals["sample_mark"] = _sample_mark
+templates.env.globals["sample_title"] = _sample_title
 
 
 def _optional_number(value: str | None, parser):

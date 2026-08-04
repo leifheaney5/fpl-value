@@ -289,6 +289,18 @@ class PlayerSnapshot(Base):
     position_forward_tier: Mapped[str] = mapped_column(
         String(30), default="Not Ranked"
     )
+    # Points-per-million compared within a position. Globally it favours cheap
+    # defenders and keepers, so the raw ranking answers "who is cheap and
+    # steady" rather than "who is good value for what they are".
+    position_value_rank: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    position_value_percentile: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    position_value_tier: Mapped[str | None] = mapped_column(
+        String(30), nullable=True
+    )
     upcoming_fixtures: Mapped[list[dict[str, Any]]] = mapped_column(
         JSON, default=list
     )

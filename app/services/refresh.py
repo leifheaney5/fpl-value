@@ -730,6 +730,13 @@ def refresh_data(
             "value_percentile",
             "value_tier",
         )
+        assign_position_ranks(
+            computed,
+            "value",
+            "position_value_rank",
+            "position_value_percentile",
+            "position_value_tier",
+        )
         assign_global_ranks(
             computed,
             "reliable_value",

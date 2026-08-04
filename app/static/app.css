@@ -218,3 +218,14 @@ footer { border-top: 1px solid var(--line); color: var(--muted); text-align: cen
   border-radius: .25em;
   white-space: nowrap;
 }
+
+/* Sample-size marker. A rate from 90 minutes and a rate from 3000 minutes
+   rendered identically is what let a one-game keeper outrank a season of
+   elite output. */
+.sample-mark {
+  font-size: .8em;
+  margin-left: .25em;
+  opacity: .8;
+  cursor: help;
+  color: #f0b429;
+}

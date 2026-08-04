@@ -295,3 +295,39 @@ def assign_position_ranks(
             row[rank_key] = rank
             row[percentile_key] = percentile(rank, count)
             row[tier_key] = cumulative_tier(rank, count)
+
+
+# A rate needs a sample behind it. These thresholds are in minutes because
+# minutes are what the FPL API reports for every player in every era, and
+# because a substitute who plays 20 minutes twenty times is a better-evidenced
+# rate than a starter who played twice.
+#
+# 900 minutes is ten full matches -- roughly a quarter of a season, and the
+# point at which a per-90 rate stops swinging wildly on one return. 2000 is
+# over half a season of regular starts.
+SAMPLE_HIGH_MINUTES = 2000
+SAMPLE_MEDIUM_MINUTES = 900
+
+
+def sample_confidence(snapshot: Any) -> tuple[str, str]:
+    """How much weight a rate derived from this player's minutes can carry.
+
+    Returns a level and a human-readable reason. ``none`` is distinct from
+    ``low``: no minutes is an absence of evidence, not thin evidence, and the
+    interface should not invite comparison between them.
+    """
+    minutes = int(getattr(snapshot, "minutes", 0) or 0)
+    starts = int(getattr(snapshot, "starts", 0) or 0)
+
+    if minutes <= 0:
+        return "none", "No minutes played, so no rate can be formed"
+
+    detail = f"{minutes} minutes"
+    if starts:
+        detail += f" across {starts} start{'s' if starts != 1 else ''}"
+
+    if minutes >= SAMPLE_HIGH_MINUTES:
+        return "high", f"{detail} — a well-evidenced rate"
+    if minutes >= SAMPLE_MEDIUM_MINUTES:
+        return "medium", f"{detail} — a moderate sample"
+    return "low", f"{detail} — too small a sample to rely on"
