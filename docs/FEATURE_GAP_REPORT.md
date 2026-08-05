@@ -1,10 +1,18 @@
 # FPL Value Studio Feature-Gap Report
 
+> **HISTORICAL — this is a point-in-time audit from 2026-08-02, kept as a
+> record of what the codebase looked like before the trust work. Do not read
+> it as a description of the current system.** Figures below, including the
+> test count of 10, describe the repository on that date; the suite is now
+> several hundred tests and most of the gaps named here are closed.
+>
+> For current state see `README.md`, `docs/METRICS.md`,
+> `docs/MODEL_EVALUATION.md` and `docs/RANKING_EVALUATION.md`.
+>
 > **Update 2026-08-03 — Trust Foundation increment delivered.**
 > See the "Trust Foundation delivered" section at the end of this document for
 > the seven audit findings and their resolutions, and
 > `docs/superpowers/specs/2026-08-02-trust-foundation-design.md` for the design.
-
 
 **Audit date:** 2026-08-02  
 **Evidence:** repository inventory, routes, SQLAlchemy models, refresh pipeline, Docker/Railway configuration, and `python -m pytest -q` (10 passed).

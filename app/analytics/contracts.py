@@ -110,9 +110,12 @@ CONTRACTS: dict[str, MetricContract] = {
         valid_range=(0.0, 200.0),
         minimum_sample=1,
         null_behaviour=(
-            "Null when price is not positive, and before the team has played a "
-            "match: a points-per-million rate needs opportunity in its "
-            "denominator."
+            "Null when price is not positive, or when no counting stats exist "
+            "at all. Before the team has played a match this metric is computed "
+            "from the previous season's total and carries "
+            "MetricStatus.PREVIOUS_SEASON: unlike a per-game rate it divides a "
+            "season total by price, so a single lucky appearance ranks near the "
+            "bottom rather than the top."
         ),
     ),
     "reliability_factor": _contract(
@@ -166,10 +169,14 @@ CONTRACTS: dict[str, MetricContract] = {
         valid_range=(0.0, 30.0),
         minimum_sample=1,
         null_behaviour=(
-            "Null when the team has played no matches this season. The "
-            "preseason bootstrap still reports the previous season's minutes "
-            "and points, so a rate built from them would describe a season "
-            "that has ended."
+            "Null below 270 minutes played -- three full matches. A per-90 rate "
+            "extrapolates from the minutes actually played, and one point in a "
+            "one-minute cameo reads as 90.00 per 90. Before the team has played "
+            "a match the rate is computed from the previous season's minutes "
+            "and carries MetricStatus.PREVIOUS_SEASON. Never offer this column "
+            "as a primary sort: measured over nine archive seasons its rank "
+            "correlation with the next five gameweeks is negative for "
+            "midfielders and forwards. See docs/RANKING_EVALUATION.md."
         ),
         precision=3,
     ),

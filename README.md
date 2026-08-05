@@ -54,7 +54,10 @@ to produce a result.
 - Ten seasons of historical per-gameweek data for model training
 - Point-in-time feature builder with a proven no-leakage guarantee
 - Next-gameweek captaincy ranking that counts double gameweeks and stays silent without expected minutes
-- Walk-forward backtesting against six baselines
+- Walk-forward backtesting of projections against six baselines
+- Walk-forward evaluation of the sheet's sort orders, individually and by the squad they build under a budget
+- Carry-over labelling: last season's counting stats are shown, named as last season's, until a match is played
+- Sample-size markers so a rate from 90 minutes is not read like one from 3000
 - Railway Docker and cron configuration
 - Automated tests
 

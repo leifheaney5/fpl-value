@@ -400,7 +400,8 @@ Coverage is 97.8% from 2021-22 and zero before, where the archive records no
 team names.
 
 A controlled A/B on identical seasons, folds and model, masking the three
-features in place so nothing else varies:
+features in place so nothing else varies. Raw output in
+`docs/evaluation-opponent.json`:
 
 | State | | MAE | Spearman |
 | --- | --- | ---: | ---: |
