@@ -39,6 +39,25 @@ with S() as db:
         print(f"{name:32} {sp if sp is None else round(sp, 4):>9} "
               f"{data['wins']:>5} {data['seasons']:>8}")
 
+    # Per-position breakdown, pooled across seasons by cohort size. A sort is
+    # applied inside a position at least as often as across the whole pool.
+    positions = ("GK", "DEF", "MID", "FWD")
+    print("\nper-position Spearman (pooled across seasons)")
+    print(f"{'candidate':32} " + " ".join(f"{p:>8}" for p in positions))
+    print("-" * 70)
+    for name, data in rows:
+        cells = []
+        for position in positions:
+            values = [
+                season_data.get(position)
+                for season_data in data.get("per_position", {}).values()
+            ]
+            values = [v for v in values if v is not None]
+            cells.append(
+                f"{sum(values)/len(values):8.3f}" if values else f"{'-':>8}"
+            )
+        print(f"{name:32} " + " ".join(cells))
+
     with open("docs/ranking-evaluation.json", "w", encoding="utf-8") as handle:
         json.dump(report, handle, indent=2, default=str)
     print("\nwritten to docs/ranking-evaluation.json")

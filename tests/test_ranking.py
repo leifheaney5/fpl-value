@@ -66,3 +66,30 @@ def test_a_candidate_returning_none_is_excluded_not_scored_zero():
 
 def test_the_minimum_gameweek_cohort_is_large_enough_to_be_meaningful():
     assert MIN_PLAYERS_PER_GAMEWEEK >= 30
+
+
+def test_position_breakdown_scores_each_position_separately():
+    """A sort used inside a position must be judged inside that position."""
+    from app.models.ranking import group_by_position
+
+    rows = [
+        {"position": "DEF", "score": 3.0, "outcome": 9.0},
+        {"position": "DEF", "score": 1.0, "outcome": 2.0},
+        {"position": "FWD", "score": 5.0, "outcome": 1.0},
+        {"position": "FWD", "score": 2.0, "outcome": 8.0},
+    ]
+    grouped = group_by_position(rows)
+    assert set(grouped) == {"DEF", "FWD"}
+    assert len(grouped["DEF"]) == 2
+    # DEF is ranked correctly, FWD inverted -- they must not cancel out.
+    assert grouped["DEF"][0]["outcome"] == 9.0
+
+
+def test_rows_without_a_position_are_dropped_not_bucketed_as_unknown():
+    """An unlabelled row cannot be judged inside any position cohort."""
+    from app.models.ranking import group_by_position
+
+    grouped = group_by_position(
+        [{"position": None, "score": 1.0}, {"position": "MID", "score": 2.0}]
+    )
+    assert set(grouped) == {"MID"}

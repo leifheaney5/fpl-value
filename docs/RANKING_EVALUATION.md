@@ -145,6 +145,48 @@ a promising margin on partial evidence that did not survive a full fold count.
 The squad evaluation covers 6 seasons against the ranking evaluation's 9, so it
 is the weaker of the two, not the tiebreaker.
 
+## By position
+
+A sort is applied inside a position at least as often as across the whole pool,
+via the position filter. Pooling them lets a candidate that ranks defenders well
+and forwards badly average out to "fine". Cohorts need at least 15 players in a
+gameweek to be correlated.
+
+| Candidate | GK | DEF | MID | FWD |
+| --- | --- | --- | --- | --- |
+| points_per_game | 0.788 | **0.686** | **0.766** | **0.767** |
+| minutes_mean | 0.793 | 0.685 | 0.757 | 0.767 |
+| reliable_value | 0.790 | 0.683 | 0.757 | 0.764 |
+| points_per_million | 0.785 | 0.679 | 0.749 | 0.750 |
+| points_per_game_shrunk | 0.712 | 0.656 | 0.742 | 0.747 |
+| form_last3 | **0.801** | 0.644 | 0.741 | 0.746 |
+| composite_with_form | 0.570 | 0.529 | 0.631 | 0.634 |
+| composite_quality_security | 0.551 | 0.504 | 0.610 | 0.615 |
+| points_per_90_min1800 | 0.058 | 0.141 | 0.346 | 0.121 |
+| points_per_90 | 0.265 | 0.096 | **−0.066** | **−0.133** |
+
+**Points-per-90 is actively misleading for attackers, not merely useless.** Its
+rank correlation is *negative* for midfielders (−0.066) and forwards (−0.133):
+sorting a forward list by P/90 orders them slightly worse than not sorting at
+all. The pooled figure of 0.027 concealed this by averaging a mildly positive
+goalkeeper cohort against negative outfield ones. This is the strongest argument
+yet that the column should never be offered as a primary sort.
+
+**Defenders are the hardest position to rank.** Every candidate scores lowest
+there — the best is 0.686 against 0.766–0.788 elsewhere. Clean sheets depend on
+ten team-mates and a goalkeeper, so an individual defender's future return is
+substantially less predictable from their own history. Worth remembering before
+trusting any defender ordering as strongly as an attacking one.
+
+**Goalkeepers are the one position where points-per-game is not top**, though
+the margin is small: `form_last3` at 0.801 and `minutes_mean` at 0.793 against
+0.788. A 1–2% gap is inside the range that has repeatedly failed to survive on
+this project, so it is recorded as an observation, not a recommendation to sort
+keepers differently.
+
+Otherwise the pooled conclusion holds within each cohort: points-per-game is
+best or statistically tied for best in DEF, MID and FWD.
+
 ## The gate
 
 Any new ordering must, on this nine-fold walk-forward:
@@ -163,12 +205,20 @@ To become the **default sort** it must additionally:
 
 ## Limitations
 
-- The target is raw points, not points per pound. `points_per_million` scores
-  0.7213 while also accounting for price, which under a budget constraint may
-  be the better trade — this harness cannot say, because it does not model a
-  budget. A squad-level evaluation would be needed to settle it.
 - Fixture difficulty is absent from the archive and is held at the neutral
-  value 3, so no candidate here can express a fixture swing.
-- Position is not controlled for. A sort is used within a position at least as
-  often as across all players, and the ordering that wins overall may not win
-  inside each position.
+  value 3, so no candidate here can express a fixture swing. This is the
+  largest remaining gap: an ordering that accounts for opponent strength
+  cannot be tested at all on this data.
+- The squad evaluation covers 6 seasons of like-for-like builds against the
+  ranking evaluation's 9, and samples 10 gameweeks per season rather than all
+  38. It is the weaker of the two and should not be used to overturn the other.
+- The squad builder is greedy, modelling someone working down a sorted sheet.
+  An optimiser would extract more from every ordering, and possibly reorder the
+  results.
+- `reliable_value` here omits the deployed metric's availability term, which
+  the archive does not carry. Its real in-season behaviour may differ.
+- Both evaluations measure a five-gameweek horizon. A manager choosing a
+  season-long hold is asking a different question.
+
+Two earlier limitations are now closed: budget-awareness by the squad-level
+section, and position by the by-position section.
