@@ -223,6 +223,29 @@ class ProvisionalClient(LiveClient):
     FIRST_DATA_CHECKED = False
 
 
+class FirstGameweekPlayedClient(LiveClient):
+    """The state at roughly 19:00 on 21 August: GW1 played, GW2 next.
+
+    Counting stats are this season's now -- small, because one match has been
+    played -- which is what ends the carry-over period. Every downstream
+    behaviour that was dormant in preseason switches on at this moment.
+    """
+
+    def bootstrap(self):
+        payload = super().bootstrap()
+        for element in payload["elements"]:
+            element.update(
+                {
+                    "total_points": 6,
+                    "minutes": 90,
+                    "starts": 1,
+                    "form": "6.0",
+                    "points_per_game": "6.0",
+                }
+            )
+        return payload
+
+
 class SquadClient(LiveClient):
     """A full roster, so features with a minimum-sample gate actually activate.
 
