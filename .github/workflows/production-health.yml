@@ -1,8 +1,6 @@
 name: Production Health
 
 on:
-  schedule:
-    - cron: '*/15 * * * *'
   pull_request:
     branches: [feat/railway-fpl-value-studio]
   workflow_dispatch:
@@ -11,22 +9,36 @@ permissions:
   contents: read
 
 jobs:
-  health:
+  fpl:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
-      - name: Check FPL Value production health
+      - run: test "$(curl -L -sS -o /tmp/body -w '%{http_code}' --max-time 30 'https://web-production-f5979.up.railway.app/health' || true)" = '200'
+
+  select-xi:
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "$(curl -L -sS -o /tmp/body -w '%{http_code}' --max-time 30 'https://select-xi.pro/' || true)" = '200'
+
+  soccer-scanner:
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "$(curl -L -sS -o /tmp/body -w '%{http_code}' --max-time 30 'https://soccerscanner.pro/' || true)" = '200'
+
+  game-theory-atlas:
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "$(curl -L -sS -o /tmp/body -w '%{http_code}' --max-time 30 'https://web-production-d47ea.up.railway.app/' || true)" = '200'
+
+  portfolio:
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "$(curl -L -sS -o /tmp/body -w '%{http_code}' --max-time 30 'https://leifheaney.com/' || true)" = '200'
+
+  optio:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe Optio public login
         run: |
-          set -euo pipefail
-          url='https://web-production-f5979.up.railway.app/health'
-          ok=0
-          for attempt in 1 2 3 4; do
-            code=$(curl -L -sS -o /tmp/body -w '%{http_code}' --max-time 25 "$url" || true)
-            echo "attempt $attempt -> HTTP $code"
-            if [ "$code" = '200' ]; then ok=1; break; fi
-            sleep 15
-          done
-          if [ "$ok" != '1' ]; then
-            cat /tmp/body || true
-            exit 1
-          fi
+          code=$(curl -L -sS -o /tmp/body -w '%{http_code}' --max-time 30 'https://optio.news/login' || true)
+          echo "Optio /login -> HTTP $code"
+          test "$code" = '200'
