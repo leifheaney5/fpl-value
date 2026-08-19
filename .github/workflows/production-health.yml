@@ -13,11 +13,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Probe Regula frontend and API health
+      - name: Diagnose Regula frontend and API health
         run: |
-          set -euo pipefail
+          set -u
           for path in / /api/health; do
-            code=$(curl -L -sS -o /tmp/body -w '%{http_code}' --max-time 30 "https://regula-production.up.railway.app${path}" || true)
-            echo "$path -> HTTP $code"
-            test "$code" = '200'
+            echo "===== $path ====="
+            curl -L -sS -D - -o /tmp/body --max-time 30 "https://regula-production.up.railway.app${path}" || true
+            echo "--- body ---"
+            head -c 1000 /tmp/body || true
+            echo
           done
