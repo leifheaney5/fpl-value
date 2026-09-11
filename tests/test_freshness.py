@@ -95,3 +95,52 @@ def test_inflight_loader_cannot_overwrite_an_invalidated_generation():
     assert refreshed.value == {"event": 6}
     assert cached.value == {"event": 6}
     assert cached.cache_hit is True
+
+
+def test_forced_waiter_reuses_the_inflight_refresh():
+    cache = FreshnessCache(clock=lambda: 100.0)
+    policy = FreshnessPolicy("team", ttl_seconds=60)
+    loader_started = threading.Event()
+    waiter_waiting = threading.Event()
+    release_loader = threading.Event()
+    calls = []
+    results = []
+
+    def loader():
+        calls.append(1)
+        loader_started.set()
+        assert release_loader.wait(timeout=1)
+        return {"event": 5}
+
+    first = threading.Thread(
+        target=lambda: results.append(
+            cache.get("entry:7", loader, policy, force=True)
+        )
+    )
+    first.start()
+    assert loader_started.wait(timeout=1)
+
+    condition = cache._conditions["entry:7"]
+    original_wait = condition.wait
+
+    def wait(*args, **kwargs):
+        waiter_waiting.set()
+        return original_wait(*args, **kwargs)
+
+    condition.wait = wait
+    second = threading.Thread(
+        target=lambda: results.append(
+            cache.get("entry:7", loader, policy, force=True)
+        )
+    )
+    second.start()
+    assert waiter_waiting.wait(timeout=1)
+    release_loader.set()
+    first.join(timeout=1)
+    second.join(timeout=1)
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert calls == [1]
+    assert [record.value for record in results] == [{"event": 5}, {"event": 5}]
+    assert sum(record.cache_hit for record in results) == 1

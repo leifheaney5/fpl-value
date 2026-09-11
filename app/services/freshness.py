@@ -61,15 +61,16 @@ class FreshnessCache:
         force: bool = False,
     ) -> FreshnessRecord[T]:
         """Load a key once per generation, or return its valid cached record."""
+        waited_for_generation: int | None = None
         with self._lock:
             while True:
                 generation = self._generations.setdefault(key, 0)
                 record = self._records.get(key)
                 if (
-                    not force
-                    and record is not None
+                    record is not None
                     and record.generation == generation
                     and self._clock() < record.expires_at
+                    and (not force or waited_for_generation == generation)
                 ):
                     return replace(record, cache_hit=True, stale=False, last_error=None)  # type: ignore[return-value]
 
@@ -78,6 +79,7 @@ class FreshnessCache:
                     self._loading[key] = generation
                     previous = record
                     break
+                waited_for_generation = generation
                 condition.wait()
 
         try:
