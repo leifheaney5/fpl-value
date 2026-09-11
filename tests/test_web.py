@@ -5,6 +5,7 @@ from io import BytesIO
 from openpyxl import load_workbook
 from types import SimpleNamespace
 from pathlib import Path
+import re
 
 from app.db.base import Base
 from app.db.session import get_db
@@ -12,6 +13,22 @@ from app.main import app
 from app.config import Settings
 from app.web.auth import safe_next_path, valid_credentials
 from app.web import routes
+
+
+def responsive_rules_at_viewport(css, *, viewport_width):
+    """Return the first max-width media block that applies at this width."""
+    for match in re.finditer(r"@media\s*\(max-width:\s*(\d+)px\)\s*\{", css):
+        if viewport_width > int(match.group(1)):
+            continue
+        depth = 1
+        for index in range(match.end(), len(css)):
+            if css[index] == "{":
+                depth += 1
+            elif css[index] == "}":
+                depth -= 1
+                if depth == 0:
+                    return css[match.end():index]
+    raise AssertionError(f"No responsive CSS block applies at {viewport_width}px")
 
 
 def test_web_routes_health_exports_and_new_pages(tmp_path):
@@ -74,7 +91,8 @@ def test_header_regions_center_navigation_and_preserve_responsive_collapse(tmp_p
         assert "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr)" in css
         assert ".site-header__nav {" in css
         assert "@media (max-width: 1000px)" in css
-        assert ".site-header__nav { display: none; }" in css
+        narrow_rules = responsive_rules_at_viewport(css, viewport_width=600)
+        assert re.search(r"\.site-header__nav\s*\{\s*display:\s*none;\s*\}", narrow_rules)
     finally:
         app.dependency_overrides.clear()
 
