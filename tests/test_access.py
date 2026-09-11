@@ -117,6 +117,9 @@ def test_manual_team_refresh_clears_cache_and_redirects(monkeypatch):
     from app.web import routes
     from app.services import my_team as my_team_service
 
+    monkeypatch.setattr(
+        my_team_service, "_REMOTE_CACHE", my_team_service.FreshnessCache()
+    )
     my_team_service.clear_remote_team_cache()
     my_team_service._REMOTE_CACHE.get(
         "entry:123",
