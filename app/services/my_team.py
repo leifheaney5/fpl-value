@@ -122,7 +122,13 @@ def _remote_team_data(
     return data
 
 
-def linked_team_data(db: Session, client: FPLClient, settings: Settings) -> dict[str, Any] | None:
+def linked_team_data(
+    db: Session,
+    client: FPLClient,
+    settings: Settings,
+    *,
+    rows: list[dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
     """Return public team information and current picks when an entry is configured."""
     if not settings.fpl_entry_id:
         return None
@@ -139,7 +145,8 @@ def linked_team_data(db: Session, client: FPLClient, settings: Settings) -> dict
     benchmark_events = remote["benchmark_events"]
     picks = remote["picks"]
 
-    rows_by_id = {row["player"].id: row for row in latest_rows(db, settings.current_season)}
+    current_rows = rows if rows is not None else latest_rows(db, settings.current_season)
+    rows_by_id = {row["player"].id: row for row in current_rows}
     squad = []
     for pick in picks:
         row = rows_by_id.get(pick.get("element"))

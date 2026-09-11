@@ -191,6 +191,64 @@ def latest_rows(db: Session, season: str) -> list[dict[str, Any]]:
     return result
 
 
+def latest_player_options(
+    db: Session,
+    season: str,
+    *,
+    exclude_player_id: int | None = None,
+) -> list[dict[str, Any]]:
+    """Return only the current fields rendered by the player comparison picker."""
+    latest = latest_snapshot_time(db, season)
+    if latest is None:
+        return []
+
+    statement = (
+        select(
+            Player.id,
+            Player.first_name,
+            Player.second_name,
+            Player.web_name,
+            Team.short_name,
+            PlayerSnapshot.price,
+        )
+        .join(Player, Player.id == PlayerSnapshot.player_id)
+        .join(Team, Team.id == Player.team_id)
+        .where(
+            PlayerSnapshot.captured_at == latest,
+            PlayerSnapshot.season == season,
+        )
+        .order_by(PlayerSnapshot.reliable_value.desc().nulls_last())
+    )
+    if exclude_player_id is not None:
+        statement = statement.where(Player.id != exclude_player_id)
+
+    return [
+        {
+            "player": {
+                "id": row.id,
+                "full_name": " ".join(
+                    part for part in (row.first_name, row.second_name) if part
+                ) or row.web_name,
+            },
+            "team": {"short_name": row.short_name},
+            "snapshot": {"price": row.price},
+        }
+        for row in db.execute(statement)
+    ]
+
+
+def history_player_count(db: Session, season: str) -> int:
+    """Count players with enough snapshots for historical diagnostics."""
+    return len(
+        db.scalars(
+            select(PlayerSnapshot.player_id)
+            .where(PlayerSnapshot.season == season)
+            .group_by(PlayerSnapshot.player_id)
+            .having(func.count(PlayerSnapshot.id) >= 2)
+        ).all()
+    )
+
+
 def filtered_players(
     db: Session,
     *,
@@ -385,11 +443,7 @@ def movers_data(
 
 def diagnostics_data(db: Session, season: str) -> dict[str, Any]:
     rows = latest_rows(db, season)
-    history_points = sum(
-        1
-        for row in rows
-        if len(player_history(db, row["player"].id, season, 2)) >= 2
-    )
+    history_points = history_player_count(db, season)
     return {
         "rows": rows,
         "history_points": history_points,

@@ -31,6 +31,7 @@ from app.services.exports import csv_bytes, xlsx_bytes
 from app.services.queries import (
     dashboard_data,
     filtered_players,
+    latest_player_options,
     latest_rows,
     movers_data,
     diagnostics_data,
@@ -217,7 +218,7 @@ def dashboard(
     # anonymous visitor can receive, rather than being masked at render time.
     data["authenticated"] = can_access_personal(request, settings)
     data["my_team"] = (
-        linked_team_data(db, FPLClient(settings), settings)
+        linked_team_data(db, FPLClient(settings), settings, rows=data["rows"])
         if data["authenticated"]
         else None
     )
@@ -343,10 +344,11 @@ def player_detail(
             "player": player,
             "current": history[-1],
             "history": history,
-            "comparison_options": [
-                row for row in filtered_players(db, season=settings.current_season, sort="reliable_value")
-                if row["player"].id != player_id
-            ],
+            "comparison_options": latest_player_options(
+                db,
+                settings.current_season,
+                exclude_player_id=player_id,
+            ),
         },
     )
 
@@ -609,8 +611,9 @@ def recommendation_page(
     error = None
     checks = None
     activates_when = None
+    rows = latest_rows(db, settings.current_season)
     try:
-        recommendation = recommend_team_cached(latest_rows(db, settings.current_season), budget_value, strategy)
+        recommendation = recommend_team_cached(rows, budget_value, strategy)
     except NotReadyError as exc:
         # Not an error: the inputs simply cannot support a recommendation yet.
         checks = exc.checks
@@ -618,7 +621,7 @@ def recommendation_page(
     except ValueError as exc:
         error = str(exc)
     team = (
-        linked_team_data(db, FPLClient(settings), settings)
+        linked_team_data(db, FPLClient(settings), settings, rows=rows)
         if can_access_personal(request, settings)
         else None
     )

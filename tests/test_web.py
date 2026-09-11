@@ -3,12 +3,14 @@ from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
 from io import BytesIO
 from openpyxl import load_workbook
+from types import SimpleNamespace
 
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 from app.config import Settings
 from app.web.auth import safe_next_path, valid_credentials
+from app.web import routes
 
 
 def test_web_routes_health_exports_and_new_pages(tmp_path):
@@ -56,3 +58,32 @@ def test_credentials_use_constant_time_path_and_safe_redirect():
     assert safe_next_path("/players") == "/players"
     assert safe_next_path("https://example.invalid") == "/"
     assert safe_next_path("//example.invalid") == "/"
+
+
+def test_dashboard_passes_its_loaded_rows_to_my_team(monkeypatch):
+    rows = [{"player": object(), "snapshot": object()}]
+    captured_rows = []
+    monkeypatch.setattr(routes, "dashboard_data", lambda db, season: {"rows": rows})
+    monkeypatch.setattr(routes, "linked_team_data", lambda db, client, settings, *, rows=None: captured_rows.append(rows))
+    monkeypatch.setattr(routes.templates, "TemplateResponse", lambda **kwargs: kwargs["context"])
+    settings = Settings(access_mode="local", fpl_entry_id=123)
+
+    context = routes.dashboard(SimpleNamespace(session={}), db=object(), settings=settings)
+
+    assert captured_rows == [rows]
+    assert context["my_team"] is None
+
+
+def test_recommendation_passes_its_loaded_rows_to_my_team(monkeypatch):
+    rows = [{"player": object(), "snapshot": object()}]
+    captured_rows = []
+    monkeypatch.setattr(routes, "latest_rows", lambda db, season: rows)
+    monkeypatch.setattr(routes, "recommend_team_cached", lambda candidate_rows, budget, strategy: None)
+    monkeypatch.setattr(routes, "linked_team_data", lambda db, client, settings, *, rows=None: captured_rows.append(rows))
+    monkeypatch.setattr(routes.templates, "TemplateResponse", lambda **kwargs: kwargs["context"])
+    settings = Settings(access_mode="local", fpl_entry_id=123)
+
+    context = routes.recommendation_page(SimpleNamespace(session={}), db=object(), settings=settings)
+
+    assert captured_rows == [rows]
+    assert context["my_team"] is None
