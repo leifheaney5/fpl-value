@@ -47,6 +47,7 @@ from app.services.team_recommender import (
 )
 from app.services.player_intelligence import build_player_intelligence
 from app.services.template_teams import price_slot_suggestions, template_summaries
+from app.services.team_analysis import fixture_analysis, team_performance
 from app.web import audit
 from app.web.auth import (
     can_access_personal,
@@ -479,6 +480,24 @@ def captaincy(
         "season_state": data["season_state"],
         "season": data["season"],
     })
+
+
+@router.get("/fixtures", response_class=HTMLResponse)
+def fixtures_page(request: Request, db: Session = Depends(get_db)):
+    return templates.TemplateResponse(
+        request=request,
+        name="fixtures.html",
+        context={"rows": fixture_analysis(db, limit=10)},
+    )
+
+
+@router.get("/performance", response_class=HTMLResponse)
+def performance_page(request: Request, db: Session = Depends(get_db)):
+    return templates.TemplateResponse(
+        request=request,
+        name="performance.html",
+        context={"rows": team_performance(db, limit=10)},
+    )
 
 
 @router.get("/transfer-market", response_class=HTMLResponse)

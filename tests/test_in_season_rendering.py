@@ -16,7 +16,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.config import Settings
 from app.db.base import Base
-from app.db.models import Gameweek
+from app.db.models import Fixture, Gameweek
 from app.db.session import get_db
 from app.main import app
 from app.services.captaincy import captain_candidates
@@ -37,6 +37,7 @@ PAGES = [
     "/forward", "/rotation", "/transfers", "/movers", "/compare",
     "/diagnostics", "/schema", "/settings", "/differentials",
     "/transfer-market", "/templates", "/recommendation", "/captaincy",
+    "/fixtures", "/performance",
 ]
 
 STATES = [
@@ -112,6 +113,38 @@ def test_captaincy_names_the_gameweek_it_is_advising_on(tmp_path):
     try:
         body = client.get("/captaincy").text
         assert "Gameweek 2" in body
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_fixtures_page_renders_stored_team_fixtures(tmp_path):
+    """A fixture page must show stored FDR data rather than an empty shell."""
+    client, _ = _seeded(tmp_path, LiveClient, "fixtures.db")
+    try:
+        body = client.get("/fixtures").text
+        assert "Next 10 fixtures" in body
+        assert "Difficulty" in body
+        assert "Test FC" in body
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_performance_page_renders_stored_team_form(tmp_path):
+    """A performance page must show scored results with all three form labels."""
+    client, Session = _seeded(tmp_path, LiveClient, "performance.db")
+    try:
+        with Session() as db:
+            fixture = db.get(Fixture, 1)
+            fixture.raw = {
+                **fixture.raw,
+                "team_h_score": 2,
+                "team_a_score": 1,
+            }
+            db.commit()
+        body = client.get("/performance").text
+        assert "Last 10 matches" in body
+        assert "Points per game" in body
+        assert "W-D-L" in body
     finally:
         app.dependency_overrides.clear()
 

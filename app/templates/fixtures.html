@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Fixtures · FPL Value Studio{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">FIXTURE ANALYSIS</p><h1>Next 10 fixtures.</h1><p>Teams are ordered by average official FPL difficulty across their stored upcoming fixtures. Lower is easier.</p></div></div>
+<section class="panel">
+  <div class="panel-title"><h2>Fixture difficulty</h2><span class="muted">Difficulty out of five</span></div>
+  {% set teams_with_fixtures = rows|selectattr("available")|list %}
+  {% if teams_with_fixtures %}
+  <div class="table-wrap"><table class="data-table"><thead><tr><th>Team</th><th>Difficulty</th><th>Available</th><th>Next 10 fixtures</th></tr></thead><tbody>
+  {% for row in teams_with_fixtures %}<tr>
+    <td><img class="team-badge" src="https://resources.premierleague.com/premierleague/badges/t{{ row.team.id }}.png" alt="{{ row.team.short_name }} badge"><strong>{{ row.team.name }}</strong><small>{{ row.team.short_name }}</small></td>
+    <td>{% if row.average_difficulty is not none %}{{ "%.1f"|format(row.average_difficulty) }} / 5{% else %}Not available{% endif %}</td>
+    <td>{{ row.available }} of 10{% if not row.complete %}<small>Difficulty incomplete</small>{% endif %}</td>
+    <td><div class="fixture-strip">{% for fixture in row.fixtures %}<span class="fixture-cell difficulty-{{ fixture.difficulty if fixture.difficulty is not none else 'unknown' }}" aria-label="{{ fixture.opponent }} {% if fixture.event is not none %}Gameweek {{ fixture.event }}{% else %}Not assigned{% endif %}, {{ 'home' if fixture.is_home else 'away' }}, difficulty {{ fixture.difficulty if fixture.difficulty is not none else 'not available' }}"><img src="{{ fixture.badge_url }}" alt="{{ fixture.opponent }} badge"><b>{{ fixture.opponent[:3]|upper }}</b><small>{% if fixture.event is not none %}GW{{ fixture.event }}{% else %}Not assigned{% endif %} · {{ "(H)" if fixture.is_home else "(A)" }}</small><em>{% if fixture.difficulty is not none %}{{ fixture.difficulty }}{% else %}—{% endif %}</em></span>{% endfor %}</div></td>
+  </tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<p class="empty team-empty">No upcoming fixtures are available yet.</p>{% endif %}
+</section>
+{% endblock %}

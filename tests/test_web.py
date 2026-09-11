@@ -24,8 +24,10 @@ def test_web_routes_health_exports_and_new_pages(tmp_path):
     try:
         client = TestClient(app)
         assert client.get("/health").status_code == 200
-        for path in ["/", "/players", "/spreadsheet", "/recommendation", "/transfers", "/movers", "/compare", "/diagnostics", "/schema", "/settings", "/differentials", "/transfer-market", "/templates"]:
+        for path in ["/", "/players", "/spreadsheet", "/recommendation", "/transfers", "/movers", "/compare", "/diagnostics", "/schema", "/settings", "/differentials", "/transfer-market", "/templates", "/fixtures", "/performance"]:
             assert client.get(path).status_code == 200
+        assert "No upcoming fixtures are available yet." in client.get("/fixtures").text
+        assert "No scored fixtures are available yet." in client.get("/performance").text
         # Personal routes stay closed to anonymous visitors even in demo mode.
         assert client.get("/my-team", follow_redirects=False).status_code == 303
         assert client.get("/players?position=MID").url.path == "/spreadsheet"

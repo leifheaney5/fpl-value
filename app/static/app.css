@@ -159,6 +159,14 @@ input, select {
 .metrics dd { margin: .25rem 0 0; font-weight: 800; }
 .fixtures { display: flex; flex-wrap: wrap; gap: .6rem; }
 .fixtures span, .schema-change { padding: .55rem .7rem; border: 1px solid var(--line); border-radius: 9px; background: #0a1723; }
+.team-badge { width: 24px; height: 24px; object-fit: contain; vertical-align: middle; margin-right: .45rem; }
+.fixture-strip, .result-strip { display: flex; gap: .35rem; min-width: max-content; }
+.fixture-cell, .result-cell { display: grid; min-width: 66px; min-height: 68px; place-items: center; padding: .3rem; border-radius: 8px; color: #071019; text-align: center; font-size: .75rem; font-style: normal; }
+.fixture-cell img { width: 19px; height: 19px; object-fit: contain; }
+.fixture-cell small, .result-cell small { color: inherit; font-size: .62rem; white-space: nowrap; }
+.fixture-cell em { font-style: normal; font-weight: 900; }
+.difficulty-1 { background: #2bd67b; }.difficulty-2 { background: #8bd65a; }.difficulty-3 { background: #f1cf4a; }.difficulty-4 { background: #f28a3c; }.difficulty-5 { background: #ff5b69; }.difficulty-unknown { background: #8795a1; }
+.result-w { background: rgba(43,214,123,.22); color: var(--green); border: 1px solid rgba(43,214,123,.45); }.result-d { background: rgba(241,207,74,.18); color: var(--yellow); border: 1px solid rgba(241,207,74,.4); }.result-l { background: rgba(255,91,105,.18); color: var(--red); border: 1px solid rgba(255,91,105,.4); }
 .schema-list { display: flex; flex-wrap: wrap; gap: .5rem; }
 .chart-panel { min-height: 360px; }
 .large-chart { min-height: 480px; }
