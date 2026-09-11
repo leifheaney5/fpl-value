@@ -38,9 +38,11 @@ class FPLClient:
     def _get_json(self, url: str, *, dataset: str | None = None) -> Any:
         started_at = time.perf_counter()
         last_error: Exception | None = None
+        final_status: int | None = None
         for attempt in range(3):
             try:
                 response = self._client.get(url)
+                final_status = response.status_code
                 response.raise_for_status()
                 payload = response.json()
                 if payload is None:
@@ -58,6 +60,14 @@ class FPLClient:
                 last_error = exc
                 if attempt < 2:
                     time.sleep(0.5 * (2 ** attempt))
+        logger.info(
+            "fpl_request dataset=%s endpoint=%s status=%s duration_ms=%.1f retries=%s",
+            dataset,
+            httpx.URL(url).path,
+            final_status,
+            (time.perf_counter() - started_at) * 1000,
+            2,
+        )
         raise RuntimeError(f"FPL request failed after retries: {url}") from last_error
 
     def bootstrap(self) -> dict[str, Any]:

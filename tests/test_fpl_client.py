@@ -1,6 +1,7 @@
 import logging
 
 import httpx
+import pytest
 
 from app.api.fpl_client import FPLClient
 from app.config import Settings
@@ -50,6 +51,40 @@ def test_get_json_logs_retry_count_after_eventual_success(caplog, monkeypatch):
     assert "status=200" in caplog.text
     assert "duration_ms=" in caplog.text
     assert "retries=2" in caplog.text
+
+
+def test_get_json_logs_terminal_failure_metadata_without_response_body(caplog, monkeypatch):
+    def respond(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            503,
+            json={"detail": "private-response-body"},
+            request=request,
+        )
+
+    http_client = httpx.Client(transport=httpx.MockTransport(respond))
+    client = FPLClient(Settings(), http_client=http_client)
+    monkeypatch.setattr("app.api.fpl_client.time.sleep", lambda _: None)
+
+    with caplog.at_level(logging.INFO, logger="app.api.fpl_client"):
+        with pytest.raises(RuntimeError, match="FPL request failed after retries"):
+            client._get_json(
+                "https://fantasy.premierleague.com/api/fixtures/",
+                dataset="fixtures",
+            )
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "app.api.fpl_client" and "fpl_request" in record.getMessage()
+    ]
+
+    assert len(messages) == 1
+    assert "dataset=fixtures" in messages[0]
+    assert "endpoint=/api/fixtures/" in messages[0]
+    assert "status=503" in messages[0]
+    assert "duration_ms=" in messages[0]
+    assert "retries=2" in messages[0]
+    assert "private-response-body" not in messages[0]
 
 
 def test_close_only_closes_client_owned_by_fpl_client():

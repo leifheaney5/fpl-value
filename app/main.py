@@ -15,6 +15,16 @@ from app.web.routes import router
 logger = logging.getLogger(__name__)
 
 
+def configure_application_logging() -> None:
+    application_logger = logging.getLogger("app")
+    application_logger.setLevel(logging.INFO)
+    if not logging.getLogger().handlers and not application_logger.handlers:
+        application_logger.addHandler(logging.StreamHandler())
+
+
+configure_application_logging()
+
+
 settings = get_settings()
 app = FastAPI(
     title=settings.app_name,

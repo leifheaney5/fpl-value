@@ -1,5 +1,7 @@
 import logging
 import re
+import subprocess
+import sys
 
 from fastapi.testclient import TestClient
 
@@ -9,9 +11,14 @@ from app.services.freshness import FreshnessCache, FreshnessPolicy
 
 def test_request_completion_log_includes_route_status_and_duration(caplog, monkeypatch):
     monkeypatch.setattr(logging.getLogger("app.main"), "disabled", False)
+    client = TestClient(app)
+    client.cookies.set("observability_sentinel", "cookie-secret-value")
 
     with caplog.at_level(logging.INFO, logger="app.main"):
-        response = TestClient(app).get("/login")
+        response = client.get(
+            "/login?query_sentinel=query-secret-value",
+            headers={"X-Observability-Sentinel": "header-secret-value"},
+        )
 
     messages = [
         record.getMessage()
@@ -27,6 +34,32 @@ def test_request_completion_log_includes_route_status_and_duration(caplog, monke
     )
     assert match is not None
     assert float(match.group(1)) >= 0
+    assert "query-secret-value" not in caplog.text
+    assert "header-secret-value" not in caplog.text
+    assert "cookie-secret-value" not in caplog.text
+
+
+def test_uvicorn_startup_configures_application_info_logging():
+    process = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import logging\n"
+            "from uvicorn.config import Config\n"
+            "Config('app.main:app').configure_logging()\n"
+            "import app.main\n"
+            "logger = logging.getLogger('app')\n"
+            "print(logger.getEffectiveLevel())\n"
+            "print(len(logger.handlers))\n"
+            "logger.info('telemetry-sentinel')\n",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert process.stdout.splitlines() == ["20", "1"]
+    assert "telemetry-sentinel" in process.stderr
 
 
 def test_freshness_logs_cache_hit_and_stale_without_payload_or_secret_values(
