@@ -249,7 +249,13 @@ def test_team_performance_ignores_invalid_newer_scores_before_limiting(tmp_path)
                 raw=_fixture_raw(3, 3, team_h_score=1, team_a_score=0),
             )
         )
-    invalid_scores = [(True, 0), (-1, 0), (1.5, 0), ("2", 0)]
+    invalid_scores = [
+        (True, 0),
+        (-1, 0),
+        (1.5, 0),
+        ("2", 0),
+        (2147483648, 0),
+    ]
     for event, (home_score, away_score) in enumerate(invalid_scores, start=12):
         db.add(
             Fixture(

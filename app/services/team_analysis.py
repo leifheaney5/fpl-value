@@ -3,13 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import Integer, and_, case, cast, func, select, union_all
+from sqlalchemy import and_, func, or_, select, union_all
 from sqlalchemy.orm import Session
 
 from app.db.models import Fixture, Team
 
 
 BADGE_URL = "https://resources.premierleague.com/premierleague/badges/t{team_id}.png"
+MAX_FPL_SCORE = 2_147_483_647
 
 
 def _fixture_key(fixture: Fixture) -> tuple[bool, int, bool, datetime, int]:
@@ -36,7 +37,7 @@ def _valid_difficulty(raw: dict[str, Any], key: str) -> int | None:
 def _valid_score(value: Any) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int):
         return None
-    return value if value >= 0 else None
+    return value if 0 <= value <= MAX_FPL_SCORE else None
 
 
 def _fixture_order(descending: bool = False):
@@ -58,6 +59,7 @@ def _valid_score_predicate(db: Session):
             return and_(
                 func.json_type(Fixture.raw, f"$.{key}") == "integer",
                 Fixture.raw[key].as_integer() >= 0,
+                Fixture.raw[key].as_integer() <= MAX_FPL_SCORE,
             )
 
         return and_(sqlite_score("team_h_score"), sqlite_score("team_a_score"))
@@ -65,11 +67,17 @@ def _valid_score_predicate(db: Session):
     if dialect == "postgresql":
         def postgres_score(key: str):
             value = Fixture.raw[key].as_string()
-            integer = case(
-                (value.op("~")(r"^[0-9]+$"), cast(value, Integer)),
-                else_=None,
+            return and_(
+                func.json_typeof(Fixture.raw[key]) == "number",
+                value.op("~")(r"^[0-9]+$"),
+                or_(
+                    func.length(value) < 10,
+                    and_(
+                        func.length(value) == 10,
+                        value <= str(MAX_FPL_SCORE),
+                    ),
+                ),
             )
-            return integer.is_not(None)
 
         return and_(postgres_score("team_h_score"), postgres_score("team_a_score"))
 
