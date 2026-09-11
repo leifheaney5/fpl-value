@@ -32,17 +32,15 @@ def _picks_event(entry: dict[str, Any], events: list[dict[str, Any]]) -> int | N
 
 
 def _picks_event_candidates(entry: dict[str, Any], events: list[dict[str, Any]]) -> list[int]:
-    candidates = []
-    for flag in ("is_next", "is_current"):
-        for event in events:
-            if event.get(flag):
-                event_id = event.get("id")
-                if event_id:
-                    candidates.append(int(event_id))
+    candidates = {
+        int(event["id"])
+        for event in events
+        if event.get("id")
+    }
     raw_event = entry.get("current_event")
     if raw_event:
-        candidates.append(int(raw_event))
-    return list(dict.fromkeys(candidates))
+        candidates.add(int(raw_event))
+    return sorted(candidates, reverse=True)
 
 
 def clear_remote_team_cache(entry_id: int | None = None) -> None:

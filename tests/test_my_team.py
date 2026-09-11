@@ -48,6 +48,22 @@ class UnpublishedUpcomingTeamClient(TeamClient):
         return {"picks": [{"element": 10, "is_captain": True}]}
 
 
+class NewestAvailableTeamClient(TeamClient):
+    def bootstrap(self):
+        self.bootstrap_calls += 1
+        return {
+            "events": [
+                {"id": 3, "name": "Gameweek 3", "finished": True, "is_current": True, "is_next": False, "average_entry_score": 50},
+                {"id": 4, "name": "Gameweek 4", "finished": False, "is_current": False, "is_next": True, "average_entry_score": 0},
+                {"id": 5, "name": "Gameweek 5", "finished": False, "is_current": False, "is_next": False, "average_entry_score": 0},
+            ]
+        }
+
+    def entry_picks(self, entry_id, event_id):
+        self.picks_events.append(event_id)
+        return {"picks": [{"element": event_id, "is_captain": True}]}
+
+
 def _rows():
     return [{
         "player": SimpleNamespace(id=10, full_name="Ada Example"),
@@ -94,6 +110,19 @@ def test_my_team_falls_back_when_upcoming_picks_are_not_published(monkeypatch):
     assert result["event"] == 3
     assert result["picks_available"] is True
     assert client.picks_events == [4, 3]
+
+
+def test_my_team_uses_newest_available_picks_not_event_flags(monkeypatch):
+    client = NewestAvailableTeamClient()
+    monkeypatch.setattr(my_team_service, "latest_rows", lambda db, season: _rows())
+    my_team_service._REMOTE_CACHE.clear()
+    settings = Settings(fpl_entry_id=123, current_season="2026/27")
+
+    result = linked_team_data(None, client, settings)
+
+    assert result["event"] == 5
+    assert result["picks_available"] is True
+    assert client.picks_events == [5]
 
 
 def test_manual_team_refresh_clears_the_cached_entry():
