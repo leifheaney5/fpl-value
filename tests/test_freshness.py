@@ -144,3 +144,50 @@ def test_forced_waiter_reuses_the_inflight_refresh():
     assert calls == [1]
     assert [record.value for record in results] == [{"event": 5}, {"event": 5}]
     assert sum(record.cache_hit for record in results) == 1
+
+
+def test_forced_waiter_receives_the_inflight_refresh_error():
+    cache = FreshnessCache(clock=lambda: 100.0)
+    policy = FreshnessPolicy("team", ttl_seconds=60, stale_if_error=False)
+    loader_started = threading.Event()
+    waiter_waiting = threading.Event()
+    release_loader = threading.Event()
+    calls = []
+    errors = []
+
+    def loader():
+        calls.append(1)
+        loader_started.set()
+        assert release_loader.wait(timeout=1)
+        raise RuntimeError("down")
+
+    def load_into_errors():
+        try:
+            cache.get("entry:7", loader, policy, force=True)
+        except RuntimeError as error:
+            errors.append(error)
+
+    first = threading.Thread(target=load_into_errors)
+    first.start()
+    assert loader_started.wait(timeout=1)
+
+    condition = cache._conditions["entry:7"]
+    original_wait = condition.wait
+
+    def wait(*args, **kwargs):
+        waiter_waiting.set()
+        return original_wait(*args, **kwargs)
+
+    condition.wait = wait
+    second = threading.Thread(target=load_into_errors)
+    second.start()
+    assert waiter_waiting.wait(timeout=1)
+    release_loader.set()
+    first.join(timeout=1)
+    second.join(timeout=1)
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert calls == [1]
+    assert [str(error) for error in errors] == ["down", "down"]
+    assert errors[0] is errors[1]

@@ -50,6 +50,9 @@ class FreshnessCache:
         self._records: dict[str, FreshnessRecord[object]] = {}
         self._generations: dict[str, int] = {}
         self._loading: dict[str, int] = {}
+        self._failed_loads: dict[
+            str, tuple[int, FreshnessRecord[object] | None, Exception]
+        ] = {}
         self._conditions: dict[str, Condition] = {}
 
     def get(
@@ -66,6 +69,17 @@ class FreshnessCache:
             while True:
                 generation = self._generations.setdefault(key, 0)
                 record = self._records.get(key)
+                failed_load = self._failed_loads.get(key)
+                if (
+                    force
+                    and waited_for_generation == generation
+                    and failed_load is not None
+                    and failed_load[0] == generation
+                ):
+                    stale_record = failed_load[1]
+                    if stale_record is not None:
+                        return stale_record  # type: ignore[return-value]
+                    raise failed_load[2]
                 if (
                     record is not None
                     and record.generation == generation
@@ -86,15 +100,21 @@ class FreshnessCache:
             value = loader()
         except Exception as error:
             with self._lock:
+                stale_record = (
+                    replace(
+                        previous,
+                        cache_hit=True,
+                        stale=True,
+                        last_error=str(error),
+                    )
+                    if previous is not None and policy.stale_if_error
+                    else None
+                )
+                self._failed_loads[key] = (generation, stale_record, error)
                 self._loading.pop(key, None)
                 self._conditions[key].notify_all()
-            if previous is not None and policy.stale_if_error:
-                return replace(
-                    previous,
-                    cache_hit=True,
-                    stale=True,
-                    last_error=str(error),
-                )  # type: ignore[return-value]
+            if stale_record is not None:
+                return stale_record  # type: ignore[return-value]
             raise
 
         fetched_at = self._clock()
@@ -108,6 +128,7 @@ class FreshnessCache:
         with self._lock:
             if self._generations.get(key, 0) == generation:
                 self._records[key] = loaded  # type: ignore[assignment]
+            self._failed_loads.pop(key, None)
             self._loading.pop(key, None)
             self._conditions[key].notify_all()
         return loaded
@@ -123,3 +144,4 @@ class FreshnessCache:
             for cache_key in keys:
                 self._generations[cache_key] = self._generations.get(cache_key, 0) + 1
                 self._records.pop(cache_key, None)
+                self._failed_loads.pop(cache_key, None)
