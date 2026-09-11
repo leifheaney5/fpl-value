@@ -94,11 +94,22 @@ def test_history_player_count_uses_one_grouped_query(tmp_path):
 
 
 def test_latest_player_options_match_the_full_row_visible_fields(tmp_path):
-    _, Session = _seeded_session(tmp_path)
+    engine, Session = _seeded_session(tmp_path)
 
     with Session() as db:
         full_rows = latest_rows(db, "2026/27")
-        options = latest_player_options(db, "2026/27", exclude_player_id=2)
+
+    statements = []
+
+    def record_statement(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record_statement)
+    try:
+        with Session() as db:
+            options = latest_player_options(db, "2026/27", exclude_player_id=2)
+    finally:
+        event.remove(engine, "before_cursor_execute", record_statement)
 
     expected = {
         (row["player"].id, row["player"].full_name, row["team"].short_name, row["snapshot"].price)
@@ -110,6 +121,15 @@ def test_latest_player_options_match_the_full_row_visible_fields(tmp_path):
         for row in options
     }
     assert actual == expected
+    assert len(statements) == 2
+    timestamp_statement = statements[0].upper()
+    options_statement = statements[1].upper()
+    assert "SELECT MAX(PLAYER_SNAPSHOTS.CAPTURED_AT)" in timestamp_statement
+    assert "WHERE PLAYER_SNAPSHOTS.SEASON" in timestamp_statement
+    assert "SELECT PLAYERS.ID, PLAYERS.FIRST_NAME, PLAYERS.SECOND_NAME, PLAYERS.WEB_NAME, TEAMS.SHORT_NAME, PLAYER_SNAPSHOTS.PRICE" in options_statement
+    assert "JOIN PLAYERS" in options_statement
+    assert "JOIN TEAMS" in options_statement
+    assert "SELECT PLAYER_SNAPSHOTS.ID" not in options_statement
 
 
 def test_diagnostics_uses_one_grouped_history_count_instead_of_per_player_queries(tmp_path):
