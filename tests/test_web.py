@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from io import BytesIO
 from openpyxl import load_workbook
 from types import SimpleNamespace
+from pathlib import Path
 
 from app.db.base import Base
 from app.db.session import get_db
@@ -44,6 +45,36 @@ def test_web_routes_health_exports_and_new_pages(tmp_path):
         assert xlsx_response.headers["content-type"].startswith("application/vnd.openxmlformats")
         workbook = load_workbook(BytesIO(xlsx_response.content), read_only=True)
         assert {"Dashboard", "Value Rankings", "Forward Value", "Rotation Risk", "Movers", "Fixtures", "Schema Changes", "Guide"}.issubset(workbook.sheetnames)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_header_regions_center_navigation_and_preserve_responsive_collapse(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'header.db'}", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(engine, expire_on_commit=False)
+
+    def override_db():
+        with Session() as db:
+            yield db
+
+    app.dependency_overrides[get_db] = override_db
+    try:
+        html = TestClient(app).get("/").text
+        assert 'class="site-header__brand ' in html
+        assert 'class="site-header__nav"' in html
+        assert 'class="site-header__actions"' in html
+        assert html.index("site-header__brand") < html.index("site-header__nav") < html.index("site-header__actions")
+        assert 'href="/fixtures"' in html
+        assert 'href="/performance"' in html
+        assert 'href="/settings"' in html
+
+        css = (Path(routes.__file__).parent.parent / "static" / "app.css").read_text()
+        assert ".site-header {" in css
+        assert "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr)" in css
+        assert ".site-header__nav {" in css
+        assert "@media (max-width: 1000px)" in css
+        assert ".site-header__nav { display: none; }" in css
     finally:
         app.dependency_overrides.clear()
 

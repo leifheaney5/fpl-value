@@ -33,14 +33,16 @@ button, .button {
 button.ghost, .button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
 .small { padding: .45rem .7rem; font-size: .8rem; }
 .site-header {
-  min-height: 68px; display: flex; align-items: center; gap: 2rem;
+  min-height: 68px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 2rem;
   padding: 0 3vw; border-bottom: 1px solid var(--line);
   background: rgba(7,16,25,.88); backdrop-filter: blur(14px);
   position: sticky; top: 0; z-index: 20;
 }
-.site-header nav { display: flex; gap: 1.2rem; flex: 1; }
-.site-header nav a { color: var(--muted); }
-.site-header nav a:hover { color: var(--text); }
+.site-header__brand { justify-self: start; }
+.site-header__nav { display: flex; justify-content: center; gap: 1.2rem; white-space: nowrap; }
+.site-header__nav a { color: var(--muted); }
+.site-header__nav a:hover { color: var(--text); }
+.site-header__actions { display: flex; justify-self: end; align-items: center; gap: .7rem; }
 .settings-link { width: 30px; height: 30px; display: grid; place-items: center; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; flex: 0 0 auto; }
 .settings-link:hover, .settings-link:focus-visible { color: var(--accent); border-color: var(--accent); }
 .settings-link svg { width: 16px; height: 16px; fill: currentColor; }
@@ -185,7 +187,7 @@ footer { border-top: 1px solid var(--line); color: var(--muted); text-align: cen
   .cards, .cards.six { grid-template-columns: repeat(2, 1fr); }
   .dashboard-grid { grid-template-columns: 1fr; }
   .filters, .compare-form { grid-template-columns: repeat(2, 1fr); }
-  .site-header nav { display: none; }
+  .site-header__nav { display: none; }
 }
 @media (max-width: 600px) {
   .hero, .player-hero { align-items: flex-start; flex-direction: column; }
