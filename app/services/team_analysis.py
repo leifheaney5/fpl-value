@@ -1,22 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from math import isfinite
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Integer, and_, case, cast, func, select, union_all
 from sqlalchemy.orm import Session
 
 from app.db.models import Fixture, Team
 
 
 BADGE_URL = "https://resources.premierleague.com/premierleague/badges/t{team_id}.png"
-
-
-def _number(value: Any) -> int | float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    return value if isfinite(value) else None
 
 
 def _fixture_key(fixture: Fixture) -> tuple[bool, int, bool, datetime, int]:
@@ -33,29 +26,118 @@ def _badge_url(team_id: int) -> str:
     return BADGE_URL.format(team_id=team_id)
 
 
+def _valid_difficulty(raw: dict[str, Any], key: str) -> int | None:
+    value = raw.get(key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value if 1 <= value <= 5 else None
+
+
+def _valid_score(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value if value >= 0 else None
+
+
+def _fixture_order(descending: bool = False):
+    columns = (
+        Fixture.event.is_(None),
+        Fixture.event,
+        Fixture.kickoff_time.is_(None),
+        Fixture.kickoff_time,
+        Fixture.id,
+    )
+    return tuple(column.desc() if descending else column.asc() for column in columns)
+
+
+def _valid_score_predicate(db: Session):
+    """Keep malformed scores out of the SQL window before they consume a slot."""
+    dialect = db.get_bind().dialect.name
+    if dialect == "sqlite":
+        def sqlite_score(key: str):
+            return and_(
+                func.json_type(Fixture.raw, f"$.{key}") == "integer",
+                Fixture.raw[key].as_integer() >= 0,
+            )
+
+        return and_(sqlite_score("team_h_score"), sqlite_score("team_a_score"))
+
+    if dialect == "postgresql":
+        def postgres_score(key: str):
+            value = Fixture.raw[key].as_string()
+            integer = case(
+                (value.op("~")(r"^[0-9]+$"), cast(value, Integer)),
+                else_=None,
+            )
+            return integer.is_not(None)
+
+        return and_(postgres_score("team_h_score"), postgres_score("team_a_score"))
+
+    raise RuntimeError(f"Unsupported fixture database dialect: {dialect}")
+
+
+def _bounded_fixtures(
+    db: Session,
+    *,
+    finished: bool,
+    limit: int,
+    valid_scores_only: bool = False,
+) -> list[tuple[Fixture, int]]:
+    """Return at most ``limit`` relevant fixtures per participating team."""
+    if limit <= 0:
+        return []
+
+    fixture_teams = union_all(
+        select(Fixture.id.label("fixture_id"), Fixture.team_h.label("team_id")),
+        select(Fixture.id.label("fixture_id"), Fixture.team_a.label("team_id")),
+    ).subquery()
+    conditions = [Fixture.finished.is_(finished)]
+    if valid_scores_only:
+        conditions.append(_valid_score_predicate(db))
+    ranked = (
+        select(
+            fixture_teams.c.fixture_id,
+            fixture_teams.c.team_id,
+            func.row_number()
+            .over(
+                partition_by=fixture_teams.c.team_id,
+                order_by=_fixture_order(descending=finished),
+            )
+            .label("row_number"),
+        )
+        .join(Fixture, Fixture.id == fixture_teams.c.fixture_id)
+        .where(*conditions)
+        .subquery()
+    )
+    return list(
+        db.execute(
+            select(Fixture, ranked.c.team_id)
+            .join(ranked, Fixture.id == ranked.c.fixture_id)
+            .where(ranked.c.row_number <= limit)
+        ).all()
+    )
+
+
 def fixture_analysis(db: Session, *, limit: int = 10) -> list[dict[str, Any]]:
     """Project the next stored fixtures for every team without remote requests."""
     teams = db.scalars(select(Team)).all()
-    fixtures = db.scalars(select(Fixture).where(Fixture.finished.is_(False))).all()
     fixtures_by_team: dict[int, list[Fixture]] = {team.id: [] for team in teams}
     teams_by_id = {team.id: team for team in teams}
-
-    for fixture in fixtures:
-        if fixture.team_h in fixtures_by_team:
-            fixtures_by_team[fixture.team_h].append(fixture)
-        if fixture.team_a in fixtures_by_team:
-            fixtures_by_team[fixture.team_a].append(fixture)
+    for fixture, team_id in _bounded_fixtures(db, finished=False, limit=limit):
+        if team_id in fixtures_by_team:
+            fixtures_by_team[team_id].append(fixture)
 
     rows = []
     for team in teams:
-        selected = sorted(fixtures_by_team[team.id], key=_fixture_key)[:limit]
         records = []
-        for fixture in selected:
+        for fixture in sorted(fixtures_by_team[team.id], key=_fixture_key):
             is_home = fixture.team_h == team.id
             opponent_id = fixture.team_a if is_home else fixture.team_h
             opponent = teams_by_id.get(opponent_id)
-            difficulty = _number(
-                fixture.team_h_difficulty if is_home else fixture.team_a_difficulty
+            raw = fixture.raw if isinstance(fixture.raw, dict) else {}
+            difficulty = _valid_difficulty(
+                raw,
+                "team_h_difficulty" if is_home else "team_a_difficulty",
             )
             records.append(
                 {
@@ -69,18 +151,18 @@ def fixture_analysis(db: Session, *, limit: int = 10) -> list[dict[str, Any]]:
                 }
             )
 
-        difficulties = [record["difficulty"] for record in records]
-        numeric = [value for value in difficulties if value is not None]
-        complete = bool(records) and len(numeric) == len(records)
+        numeric = [
+            record["difficulty"]
+            for record in records
+            if record["difficulty"] is not None
+        ]
         rows.append(
             {
                 "team": team,
                 "fixtures": records,
                 "available": len(records),
-                "complete": complete,
-                "average_difficulty": (
-                    sum(numeric) / len(numeric) if numeric else None
-                ),
+                "complete": bool(records) and len(numeric) == len(records),
+                "average_difficulty": sum(numeric) / len(numeric) if numeric else None,
             }
         )
 
@@ -97,33 +179,37 @@ def fixture_analysis(db: Session, *, limit: int = 10) -> list[dict[str, Any]]:
 def team_performance(db: Session, *, limit: int = 10) -> list[dict[str, Any]]:
     """Calculate current form from stored, completed fixtures with valid scores."""
     teams = db.scalars(select(Team)).all()
-    fixtures = db.scalars(select(Fixture).where(Fixture.finished.is_(True))).all()
     fixtures_by_team: dict[int, list[Fixture]] = {team.id: [] for team in teams}
     teams_by_id = {team.id: team for team in teams}
-
-    for fixture in fixtures:
-        raw = fixture.raw or {}
-        if _number(raw.get("team_h_score")) is None or _number(raw.get("team_a_score")) is None:
-            continue
-        if fixture.team_h in fixtures_by_team:
-            fixtures_by_team[fixture.team_h].append(fixture)
-        if fixture.team_a in fixtures_by_team:
-            fixtures_by_team[fixture.team_a].append(fixture)
+    for fixture, team_id in _bounded_fixtures(
+        db,
+        finished=True,
+        limit=limit,
+        valid_scores_only=True,
+    ):
+        if team_id in fixtures_by_team:
+            fixtures_by_team[team_id].append(fixture)
 
     rows = []
     for team in teams:
-        latest = sorted(fixtures_by_team[team.id], key=_fixture_key, reverse=True)[:limit]
         results = []
-        for fixture in reversed(latest):
-            raw = fixture.raw or {}
-            home_score = _number(raw.get("team_h_score"))
-            away_score = _number(raw.get("team_a_score"))
-            assert home_score is not None and away_score is not None
+        for fixture in sorted(fixtures_by_team[team.id], key=_fixture_key):
+            raw = fixture.raw if isinstance(fixture.raw, dict) else {}
+            home_score = _valid_score(raw.get("team_h_score"))
+            away_score = _valid_score(raw.get("team_a_score"))
+            if home_score is None or away_score is None:
+                continue
             is_home = fixture.team_h == team.id
             goals_for, goals_against = (
                 (home_score, away_score) if is_home else (away_score, home_score)
             )
-            result = "W" if goals_for > goals_against else "D" if goals_for == goals_against else "L"
+            result = (
+                "W"
+                if goals_for > goals_against
+                else "D"
+                if goals_for == goals_against
+                else "L"
+            )
             opponent_id = fixture.team_a if is_home else fixture.team_h
             opponent = teams_by_id.get(opponent_id)
             results.append(
