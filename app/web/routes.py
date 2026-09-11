@@ -39,7 +39,7 @@ from app.services.queries import (
 )
 from app.services.refresh import refresh_data
 from app.services.season_state import Readiness
-from app.services.my_team import linked_team_data, transfer_plan
+from app.services.my_team import clear_remote_team_cache, linked_team_data, transfer_plan
 from app.services.team_recommender import (
     NotReadyError,
     STRATEGIES,
@@ -49,8 +49,8 @@ from app.services.player_intelligence import build_player_intelligence
 from app.services.template_teams import price_slot_suggestions, template_summaries
 from app.web import audit
 from app.web.auth import (
+    can_access_personal,
     client_key,
-    is_authenticated,
     login_throttle,
     safe_next_path,
     valid_credentials,
@@ -214,7 +214,7 @@ def dashboard(
     data = dashboard_data(db, settings.current_season)
     # Privacy by exclusion: personal data is never placed in a context an
     # anonymous visitor can receive, rather than being masked at render time.
-    data["authenticated"] = is_authenticated(request)
+    data["authenticated"] = can_access_personal(request, settings)
     data["my_team"] = (
         linked_team_data(db, FPLClient(settings), settings)
         if data["authenticated"]
@@ -550,13 +550,30 @@ def my_team_page(
     # Defence in depth: the middleware already refuses anonymous requests to
     # this path, but the personal fetch stays behind an explicit check so a
     # future change to PROTECTION_MAP cannot silently expose it.
-    if not is_authenticated(request) and settings.require_auth_for("PERSONAL"):
+    if not can_access_personal(request, settings):
         return RedirectResponse("/login?next=/my-team", status_code=303)
     return templates.TemplateResponse(
         request=request,
         name="my_team.html",
         context={"my_team": linked_team_data(db, FPLClient(settings), settings)},
     )
+
+
+@router.post("/my-team/refresh")
+def refresh_my_team(
+    request: Request,
+    csrf_token: Annotated[str, Form()] = "",
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_db),
+):
+    if not can_access_personal(request, settings):
+        return RedirectResponse("/login?next=/my-team", status_code=303)
+    if not valid_csrf(request, csrf_token):
+        audit.record(db, "my_team.refresh.denied", request)
+        raise HTTPException(403, "Invalid CSRF token")
+    clear_remote_team_cache(settings.fpl_entry_id)
+    audit.record(db, "my_team.refresh", request)
+    return RedirectResponse("/my-team?refreshed=1", status_code=303)
 
 
 @router.get("/recommendation", response_class=HTMLResponse)
@@ -583,7 +600,7 @@ def recommendation_page(
         error = str(exc)
     team = (
         linked_team_data(db, FPLClient(settings), settings)
-        if is_authenticated(request)
+        if can_access_personal(request, settings)
         else None
     )
     return templates.TemplateResponse(request=request, name="recommendation.html", context={"recommendation": recommendation, "error": error, "checks": checks, "activates_when": activates_when, "budget": budget_value, "strategy": strategy, "strategies": STRATEGIES, "my_team": team, "transfer_plan": transfer_plan(team, recommendation) if team and recommendation else None})
@@ -691,4 +708,5 @@ def manual_refresh(
         raise HTTPException(403, "Invalid CSRF token")
     audit.record(db, "admin.refresh", request)
     refresh_data(db, settings, FPLClient(settings))
+    clear_remote_team_cache(settings.fpl_entry_id)
     return RedirectResponse("/", status_code=303)

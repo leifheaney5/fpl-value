@@ -14,7 +14,7 @@
     <nav>
       <a href="/">Dashboard</a>
       <a href="/spreadsheet">Master Spreadsheet</a>
-      {% if request.state.authenticated %}<a href="/my-team">My Team</a>{% endif %}
+      {% if request.state.can_access_personal %}<a href="/my-team">My Team</a>{% endif %}
       <a href="/recommendation">AI Recommender</a>
       <a href="/captaincy">Captaincy</a>
       <a href="/differentials">Differentials</a>
@@ -29,7 +29,7 @@
       <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
       <button class="ghost small" type="submit">Log out</button>
     </form>
-    {% else %}
+    {% elif request.state.sign_in_available %}
     <a class="ghost small" href="/login">Sign in</a>
     {% endif %}
   </header>

@@ -27,7 +27,7 @@ Set `ACCESS_MODE` to one of:
 | --- | --- | --- | --- | --- |
 | `demo` (default) | Public | Sign-in required | Sign-in required | A shareable deployment. Market data is impersonal; nothing about the linked team is reachable. |
 | `private` | Sign-in required | Sign-in required | Sign-in required | Tailscale, LAN, or any deployment that should not be readable by strangers. |
-| `local` | Open | Open | Open | Local development only. **Refuses to start unless the database is SQLite**, so it cannot be selected by accident in production. |
+| `local` | Open | Open | Open | No authentication at all. With a networked database it **refuses to start unless `TRUSTED_NETWORK=true`**, so it cannot be selected by accident on a public deployment. |
 
 If a mode requires credentials and none are configured, the application still
 starts and still serves its public class, but every personal and mutation route

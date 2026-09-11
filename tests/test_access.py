@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -8,7 +10,7 @@ from app.db.base import Base
 from app.db.models import AuditEvent
 from app.db.session import get_db
 from app.main import app
-from app.web.auth import protection_for
+from app.web.auth import can_access_personal, protection_for
 
 
 def _client(tmp_path, name="access.db"):
@@ -42,11 +44,51 @@ def test_private_mode_protects_analytics_too():
     assert settings.require_auth_for("PUBLIC") is False
 
 
-def test_local_mode_requires_sqlite():
+def test_local_mode_with_networked_database_requires_trusted_network():
     with pytest.raises(ValueError, match="ACCESS_MODE=local"):
         Settings(access_mode="local", database_url="postgresql://user:pw@host/db")
     settings = Settings(access_mode="local", database_url="sqlite:///./data/fpl.db")
     assert settings.require_auth_for("PERSONAL") is False
+
+
+def test_trusted_network_permits_local_mode_on_postgres():
+    settings = Settings(
+        access_mode="local",
+        database_url="postgresql://user:pw@host/db",
+        trusted_network=True,
+    )
+    assert settings.require_auth_for("PERSONAL") is False
+    assert settings.require_auth_for("MUTATION") is False
+    assert settings.require_auth_for("ANALYTICS") is False
+
+
+def test_trusted_network_does_not_weaken_other_modes():
+    """The flag asserts network placement; it must not grant access by itself."""
+    for mode in ("demo", "private"):
+        settings = Settings(
+            access_mode=mode,
+            database_url="postgresql://user:pw@host/db",
+            trusted_network=True,
+        )
+        assert settings.require_auth_for("PERSONAL") is True
+        assert settings.require_auth_for("MUTATION") is True
+
+
+def test_can_access_personal_follows_mode_not_identity():
+    anonymous = SimpleNamespace(session={})
+
+    local = Settings(
+        access_mode="local",
+        database_url="postgresql://user:pw@host/db",
+        trusted_network=True,
+    )
+    assert can_access_personal(anonymous, local) is True
+
+    for mode in ("demo", "private"):
+        guarded = Settings(access_mode=mode, app_username="a", app_password="b")
+        assert can_access_personal(anonymous, guarded) is False
+        signed_in = SimpleNamespace(session={"authenticated": True})
+        assert can_access_personal(signed_in, guarded) is True
 
 
 def test_missing_credentials_do_not_disable_protection():
@@ -69,6 +111,31 @@ def test_protection_classes_cover_personal_and_mutation_routes():
     assert protection_for("/admin/refresh") == "MUTATION"
     assert protection_for("/spreadsheet") == "ANALYTICS"
     assert protection_for("/") == "ANALYTICS"
+
+
+def test_manual_team_refresh_clears_cache_and_redirects(monkeypatch):
+    from app.web import routes
+    from app.services import my_team as my_team_service
+
+    my_team_service._REMOTE_CACHE[123] = (100.0, {"entry": {"id": 123}})
+    monkeypatch.setattr(routes.audit, "record", lambda *args, **kwargs: None)
+    request = SimpleNamespace(session={"csrf_token": "known-token"})
+    settings = Settings(
+        access_mode="local",
+        database_url="sqlite:///./data/fpl.db",
+        fpl_entry_id=123,
+    )
+
+    response = routes.refresh_my_team(
+        request=request,
+        csrf_token="known-token",
+        settings=settings,
+        db=None,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/my-team?refreshed=1"
+    assert 123 not in my_team_service._REMOTE_CACHE
 
 
 def test_anonymous_visitor_cannot_reach_personal_routes_or_trigger_refresh(tmp_path):

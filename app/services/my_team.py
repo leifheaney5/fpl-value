@@ -10,25 +10,83 @@ from app.config import Settings
 from app.services.queries import latest_rows
 
 
+REMOTE_CACHE_TTL_SECONDS = 600
 _REMOTE_CACHE: dict[int, tuple[float, dict[str, Any]]] = {}
+
+
+def _picks_event(entry: dict[str, Any], events: list[dict[str, Any]]) -> int | None:
+    """Choose the event whose saved squad should be shown right now."""
+    upcoming = next(
+        (event for event in events if event.get("is_next") and event.get("id")),
+        None,
+    )
+    current = next(
+        (event for event in events if event.get("is_current") and event.get("id")),
+        None,
+    )
+    selected = upcoming or current
+    if selected is not None:
+        return int(selected["id"])
+    raw_event = entry.get("current_event")
+    return int(raw_event) if raw_event else None
+
+
+def _picks_event_candidates(entry: dict[str, Any], events: list[dict[str, Any]]) -> list[int]:
+    candidates = []
+    for flag in ("is_next", "is_current"):
+        for event in events:
+            if event.get(flag):
+                event_id = event.get("id")
+                if event_id:
+                    candidates.append(int(event_id))
+    raw_event = entry.get("current_event")
+    if raw_event:
+        candidates.append(int(raw_event))
+    return list(dict.fromkeys(candidates))
+
+
+def clear_remote_team_cache(entry_id: int | None = None) -> None:
+    """Invalidate one linked team, or every linked team when no ID is given."""
+    if entry_id is None:
+        _REMOTE_CACHE.clear()
+    else:
+        _REMOTE_CACHE.pop(entry_id, None)
 
 
 def _remote_team_data(client: FPLClient, entry_id: int) -> dict[str, Any]:
     now = time.monotonic()
     cached = _REMOTE_CACHE.get(entry_id)
-    if cached and now - cached[0] < 300:
+    if cached and now - cached[0] < REMOTE_CACHE_TTL_SECONDS:
         return cached[1]
     try:
         entry = client.entry(entry_id)
-        current_event = entry.get("current_event")
+        benchmark_events = client.bootstrap().get("events", [])
+        event_candidates = _picks_event_candidates(entry, benchmark_events)
         history: dict[str, Any] = {"current": []}
-        benchmark_events: list[dict[str, Any]] = []
         picks: list[dict[str, Any]] = []
-        if current_event:
+        picks_event = None
+        last_picks_error: Exception | None = None
+        for candidate in event_candidates:
+            try:
+                candidate_picks = client.entry_picks(entry_id, candidate).get("picks", [])
+            except (RuntimeError, ValueError) as exc:
+                last_picks_error = exc
+                continue
+            picks_event = candidate
+            picks = candidate_picks
+            if picks:
+                break
+        if picks_event is None and last_picks_error is not None:
+            raise last_picks_error
+        if picks_event:
             history = client.entry_history(entry_id)
-            benchmark_events = client.bootstrap().get("events", [])
-            picks = client.entry_picks(entry_id, int(current_event)).get("picks", [])
-        data = {"entry": entry, "history": history, "benchmark_events": benchmark_events, "picks": picks}
+        data = {
+            "entry": entry,
+            "history": history,
+            "benchmark_events": benchmark_events,
+            "picks": picks,
+            "picks_event": picks_event,
+        }
     except (RuntimeError, ValueError):
         data = {"error": "Team data is temporarily unavailable."}
     _REMOTE_CACHE[entry_id] = (now, data)
@@ -43,7 +101,7 @@ def linked_team_data(db: Session, client: FPLClient, settings: Settings) -> dict
     if "error" in remote:
         return {"entry_id": settings.fpl_entry_id, "error": remote["error"]}
     entry = remote["entry"]
-    current_event = entry.get("current_event")
+    current_event = remote["picks_event"]
     history = remote["history"]
     benchmark_events = remote["benchmark_events"]
     picks = remote["picks"]

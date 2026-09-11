@@ -1,0 +1,68 @@
+# FPL Value Studio production stack for linux-leif.
+#
+# Nothing here is published to the internet. The host Caddy instance binds the
+# Tailscale address only, so `fpl-studio.leif.media` resolves and answers on the
+# tailnet and nowhere else. The app therefore publishes its port on loopback.
+services:
+  postgres:
+    # 18 to match the Railway database this stack was migrated from: pg_dump
+    # output from an 18.6 server cannot be restored into an older major.
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-fpl}
+      POSTGRES_USER: ${POSTGRES_USER:-fpl}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      # postgres:18 relocated PGDATA. Mount the parent directory, as the NewLeaf
+      # stack on this host already does; mounting the old
+      # /var/lib/postgresql/data path leaves the volume empty and silently
+      # re-initialises the cluster on every boot.
+      - fpl_postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fpl} -d ${POSTGRES_DB:-fpl}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks: [fpl]
+
+  app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: fpl-studio-app:local
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 8788
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-fpl}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fpl}
+    ports:
+      - "127.0.0.1:${FPL_STUDIO_PORT:-8788}:8788"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [fpl]
+
+  # One-shot daily refresh, replacing the Railway cron service. Started by host
+  # cron through run-refresh-task.sh. It reuses the image built for `app` rather
+  # than declaring its own `build`, so a refresh never rebuilds anything, and
+  # the `tasks` profile keeps it out of `docker compose up`.
+  refresh:
+    profiles: ["tasks"]
+    image: fpl-studio-app:local
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-fpl}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fpl}
+    command: ["bash", "scripts/run-refresh.sh", "--scheduled"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [fpl]
+
+volumes:
+  fpl_postgres:
+
+networks:
+  fpl:
+    driver: bridge

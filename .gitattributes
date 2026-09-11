@@ -1,0 +1,10 @@
+# Shell scripts must keep LF endings wherever they are checked out or archived.
+#
+# The container entrypoints (scripts/start-web.sh, scripts/run-refresh.sh) run
+# under bash in a Linux image. With core.autocrlf=true on a Windows clone,
+# `git archive` emits CRLF, and `set -euo pipefail\r` then fails at boot with
+# "set: pipefail: invalid option name" — the container restart-loops. The
+# committed blobs are already LF; this pins the checkout and archive side too.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf

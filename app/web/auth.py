@@ -36,6 +36,21 @@ def is_authenticated(request: Request) -> bool:
     return bool(request.session.get("authenticated"))
 
 
+def can_access_personal(request: Request, settings: Settings) -> bool:
+    """Whether personal data may be shown to this caller.
+
+    Call sites that gate personal features mean "is this allowed?", not "who is
+    this?". The two coincide in demo and private mode, but not in local mode,
+    where nothing requires a session: `is_authenticated` is then False for every
+    request, and gating on it would hide the linked team from the only person
+    who can reach the deployment at all.
+
+    Still deny-by-default: it grants access only where the configured access
+    mode has already decided that personal data needs no session.
+    """
+    return is_authenticated(request) or not settings.require_auth_for("PERSONAL")
+
+
 def client_key(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
@@ -79,6 +94,11 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         request.state.protection = protection
         request.state.authenticated = is_authenticated(request)
         request.state.access_mode = self.settings.access_mode
+        request.state.can_access_personal = can_access_personal(request, self.settings)
+        request.state.can_mutate = is_authenticated(request) or not self.settings.require_auth_for("MUTATION")
+        # Whether signing in would change anything. In local mode it would not,
+        # so the templates offer no sign-in affordance.
+        request.state.sign_in_available = self.settings.require_auth_for("PERSONAL")
 
         if not self.settings.require_auth_for(protection):
             return await call_next(request)

@@ -16,12 +16,15 @@ FORMATIONS = {
     "5-4-1": {"DEF": 5, "MID": 4, "FWD": 1},
 }
 STRATEGIES = {
-    "best_team": {"label": "Best Team", "projected": .84, "raw": .03, "reliable": .06, "forward": .07, "availability": 4.0, "risk": .025, "ownership": 0.0},
-    "balanced": {"label": "Balanced", "projected": .60, "raw": .15, "reliable": .15, "forward": .10, "availability": 2.0, "risk": .015, "ownership": 0.0},
-    "upside": {"label": "Maximum Upside", "projected": .78, "raw": .08, "reliable": .04, "forward": .10, "availability": 1.0, "risk": .005, "ownership": 0.0},
-    "safe": {"label": "Safe Starters", "projected": .42, "raw": .08, "reliable": .28, "forward": .07, "availability": 3.0, "risk": .04, "ownership": .0},
-    "differential": {"label": "Differentials", "projected": .55, "raw": .12, "reliable": .10, "forward": .08, "availability": 1.5, "risk": .01, "ownership": -.025},
-    "value": {"label": "Value First", "projected": .25, "raw": .30, "reliable": .28, "forward": .12, "availability": 1.5, "risk": .02, "ownership": .0},
+    "best_team": {"label": "Best Team", "projected": .84, "raw": .03, "reliable": .06, "forward": .07, "form": .0, "availability": 4.0, "risk": .025, "ownership": 0.0},
+    "balanced": {"label": "Balanced", "projected": .60, "raw": .15, "reliable": .15, "forward": .10, "form": .0, "availability": 2.0, "risk": .015, "ownership": 0.0},
+    "upside": {"label": "Maximum Upside", "projected": .78, "raw": .08, "reliable": .04, "forward": .10, "form": .0, "availability": 1.0, "risk": .005, "ownership": 0.0},
+    "safe": {"label": "Safe Starters", "projected": .42, "raw": .08, "reliable": .28, "forward": .07, "form": .0, "availability": 3.0, "risk": .04, "ownership": .0},
+    "differential": {"label": "Differentials", "projected": .55, "raw": .12, "reliable": .10, "forward": .08, "form": .0, "availability": 1.5, "risk": .01, "ownership": -.025},
+    "value": {"label": "Value First", "projected": .25, "raw": .30, "reliable": .28, "forward": .12, "form": .0, "availability": 1.5, "risk": .02, "ownership": .0},
+    "fixtures": {"label": "Fixture Focus", "projected": .55, "raw": .04, "reliable": .06, "forward": .30, "form": .05, "availability": 1.5, "risk": .01, "ownership": .0},
+    "form": {"label": "Form First", "projected": .48, "raw": .08, "reliable": .10, "forward": .10, "form": .24, "availability": 1.5, "risk": .01, "ownership": .0},
+    "reliable": {"label": "Reliable Core", "projected": .42, "raw": .08, "reliable": .32, "forward": .06, "form": .0, "availability": 2.0, "risk": .06, "ownership": .0},
 }
 _RECOMMENDATION_CACHE: dict[tuple[Any, float, str], dict[str, Any]] = {}
 _RECOMMENDATION_CACHE_LOCK = RLock()
@@ -159,6 +162,7 @@ def _score(row: dict[str, Any], strategy: str = "best_team") -> float:
     raw_efficiency = float(snapshot.total_points or 0) / max(float(snapshot.price or 1), 1)
     reliable = float(snapshot.reliable_value or 0)
     forward = float(snapshot.forward_value or 0)
+    form = float(getattr(snapshot, "form", 0) or 0)
     availability = float(snapshot.availability_factor or 0)
     risk = float(snapshot.rotation_risk or 50)
     ownership = float(getattr(snapshot, "ownership", 0) or 0)
@@ -167,6 +171,7 @@ def _score(row: dict[str, Any], strategy: str = "best_team") -> float:
         + raw_efficiency * weights["raw"]
         + reliable * weights["reliable"]
         + forward * weights["forward"]
+        + form * weights.get("form", 0.0)
         + availability * weights["availability"]
         - risk * weights["risk"]
         + ownership * weights["ownership"],
@@ -203,7 +208,7 @@ def _best_lineup(selected: list[dict[str, Any]], strategy: str) -> tuple[str | N
     by_position = {
         position: sorted(
             [row for row in selected if row["player"].position_short == position],
-            key=lambda row: _output_or_zero(row),
+            key=lambda row: (_score(row, strategy), _output_or_zero(row)),
             reverse=True,
         )
         for position in POSITION_COUNTS
@@ -216,9 +221,7 @@ def _best_lineup(selected: list[dict[str, Any]], strategy: str) -> tuple[str | N
         if len(starting) != 11:
             continue
         captain, _ = _captaincy_pair(starting)
-        score = sum(_output_or_zero(row) for row in starting) + _output_or_zero(captain)
-        if strategy in {"safe", "best_team"}:
-            score += sum(_score(row, strategy) for row in starting) * .05
+        score = sum(_score(row, strategy) for row in starting) + _score(captain, strategy)
         if score > best_score:
             best_formation, best_starting, best_score = formation, starting, score
     return best_formation, best_starting, best_score
@@ -468,8 +471,12 @@ def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: 
             for row in lineup
             if (getattr(row["snapshot"], "rotation_risk", None) or 100) <= 25
         )
+        starting_output = sum(_output_or_zero(row) for row in lineup) + _output_or_zero(
+            _captaincy_pair(lineup)[0]
+        )
         return (
-            lineup_score + (bench_output * .05),  # expected starting-XI points
+            lineup_score + (bench_output * .05),  # strategy-weighted starting-XI score
+            starting_output,                       # projected points tie-breaker
             expected_minutes_total,               # expected minutes
             secure_starters,                      # role security
             state[1],                             # strategy score
@@ -536,7 +543,7 @@ def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: 
         "formation": best_formation,
         "starting": [decorate(row, "Starting XI") for row in best_starting],
         "bench": [decorate(row, "Bench") for row in sorted((row for row in selected if row["player"].id not in starting_ids), key=lambda row: score_by_id.get(row["player"].id, _score(row, strategy)), reverse=True)],
-        "method": f"{STRATEGIES[strategy]['label']} mode: the squad is selected to maximize projected starting-XI output, with captaincy, expected minutes, availability, formation, and bench depth considered before value metrics are used as tie-breakers; constrained by FPL squad rules.",
+        "method": f"{STRATEGIES[strategy]['label']} mode: the squad is selected with the chosen strategy's weighted score across projection, value, reliability, fixtures, form, availability, rotation risk, and ownership; projected output and expected minutes break close ties, subject to FPL squad rules.",
     }
 
 

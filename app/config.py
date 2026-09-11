@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     rotation_recent_start_weight: float = Field(default=0.25, ge=0, le=1)
     rotation_recent_minutes_weight: float = Field(default=0.15, ge=0, le=1)
     csrf_enabled: bool = True
+    # Asserts that the deployment is not reachable from the public internet, so
+    # ACCESS_MODE=local may disable authentication despite a networked database.
+    # See the access_mode guard below for why this is not inferred.
+    trusted_network: bool = False
     collect_gameweek_history: bool = False
     forward_form_weight: float = Field(default=0.40, ge=0, le=1)
     forward_ppg_weight: float = Field(default=0.35, ge=0, le=1)
@@ -61,10 +65,23 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"ACCESS_MODE must be one of {', '.join(ACCESS_MODES)}"
             )
-        if self.access_mode == "local" and not self.database_url.startswith("sqlite"):
+        if (
+            self.access_mode == "local"
+            and not self.database_url.startswith("sqlite")
+            and not self.trusted_network
+        ):
+            # SQLite used to be the sole permitted pairing, as a proxy for "this
+            # deployment is not on the public internet". The proxy is wrong in
+            # both directions: a SQLite instance can be published, and a
+            # PostgreSQL one can be confined to a private network. Requiring
+            # TRUSTED_NETWORK states the actual precondition, and states it
+            # deliberately -- it cannot be arrived at by accident, which is the
+            # property the old guard was really providing.
             raise ValueError(
-                "ACCESS_MODE=local disables authentication and is only permitted "
-                "with a SQLite database"
+                "ACCESS_MODE=local disables authentication entirely. With a "
+                "networked database it is permitted only when TRUSTED_NETWORK=true "
+                "asserts the deployment is unreachable from the public internet "
+                "(for example, served only over a Tailscale address)"
             )
         return self
     fpl_bootstrap_url: str = (

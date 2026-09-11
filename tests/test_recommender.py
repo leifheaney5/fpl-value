@@ -4,6 +4,7 @@ import pytest
 
 from app.services.team_recommender import (
     NotReadyError,
+    STRATEGIES,
     _projected_output,
     recommend_team,
 )
@@ -230,3 +231,40 @@ def test_a_selected_player_is_never_justified_by_an_empty_default():
     for row in recommendation["starting"] + recommendation["bench"]:
         assert row["reason"] != "best available fit"
         assert row["reason"].strip()
+
+
+def test_strategy_changes_the_selected_squad_when_metrics_conflict():
+    """Strategy weights must affect the squad, not only an explanatory label."""
+    rows = _pool()
+    mid_players = [row for row in rows if row["player"].position_short == "MID"]
+    projection_first = mid_players[4]["snapshot"]
+    value_first = mid_players[5]["snapshot"]
+    projection_first.projected_points_5 = 34.0
+    projection_first.total_points = 100
+    projection_first.reliable_value = 2.0
+    projection_first.forward_value = 2.0
+    projection_first.form = 2.0
+    value_first.projected_points_5 = 20.0
+    value_first.total_points = 280
+    value_first.reliable_value = 25.0
+    value_first.forward_value = 25.0
+    value_first.form = 2.0
+
+    best_ids = {
+        item["row"]["player"].id
+        for item in recommend_team(rows, 100.0, "best_team")["starting"]
+        + recommend_team(rows, 100.0, "best_team")["bench"]
+    }
+    value_ids = {
+        item["row"]["player"].id
+        for item in recommend_team(rows, 100.0, "value")["starting"]
+        + recommend_team(rows, 100.0, "value")["bench"]
+    }
+
+    assert mid_players[4]["player"].id in best_ids
+    assert mid_players[5]["player"].id in value_ids
+    assert best_ids != value_ids
+
+
+def test_recommender_exposes_additional_selection_modes():
+    assert {"fixtures", "form", "reliable"}.issubset(STRATEGIES)
