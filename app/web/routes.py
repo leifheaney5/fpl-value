@@ -590,7 +590,7 @@ def refresh_my_team(
     if not valid_csrf(request, csrf_token):
         audit.record(db, "my_team.refresh.denied", request)
         raise HTTPException(403, "Invalid CSRF token")
-    clear_remote_team_cache(settings.fpl_entry_id)
+    clear_remote_team_cache(entry_id=settings.fpl_entry_id)
     audit.record(db, "my_team.refresh", request)
     return RedirectResponse("/my-team?refreshed=1", status_code=303)
 
@@ -727,5 +727,5 @@ def manual_refresh(
         raise HTTPException(403, "Invalid CSRF token")
     audit.record(db, "admin.refresh", request)
     refresh_data(db, settings, FPLClient(settings))
-    clear_remote_team_cache(settings.fpl_entry_id)
+    clear_remote_team_cache(entry_id=settings.fpl_entry_id)
     return RedirectResponse("/", status_code=303)

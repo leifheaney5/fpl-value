@@ -117,7 +117,12 @@ def test_manual_team_refresh_clears_cache_and_redirects(monkeypatch):
     from app.web import routes
     from app.services import my_team as my_team_service
 
-    my_team_service._REMOTE_CACHE[123] = (100.0, {"entry": {"id": 123}})
+    my_team_service.clear_remote_team_cache()
+    my_team_service._REMOTE_CACHE.get(
+        "entry:123",
+        lambda: {"entry": {"id": 123}},
+        my_team_service.REMOTE_CACHE_POLICY,
+    )
     monkeypatch.setattr(routes.audit, "record", lambda *args, **kwargs: None)
     request = SimpleNamespace(session={"csrf_token": "known-token"})
     settings = Settings(
@@ -135,7 +140,12 @@ def test_manual_team_refresh_clears_cache_and_redirects(monkeypatch):
 
     assert response.status_code == 303
     assert response.headers["location"] == "/my-team?refreshed=1"
-    assert 123 not in my_team_service._REMOTE_CACHE
+    refreshed = my_team_service._REMOTE_CACHE.get(
+        "entry:123",
+        lambda: {"entry": {"id": 123, "event": 5}},
+        my_team_service.REMOTE_CACHE_POLICY,
+    )
+    assert refreshed.value == {"entry": {"id": 123, "event": 5}}
 
 
 def test_anonymous_visitor_cannot_reach_personal_routes_or_trigger_refresh(tmp_path):

@@ -1,93 +1,124 @@
 from __future__ import annotations
 
-import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.api.fpl_client import FPLClient
 from app.config import Settings
+from app.services.freshness import FreshnessCache, MY_TEAM_POLICY
 from app.services.queries import latest_rows
 
 
-REMOTE_CACHE_TTL_SECONDS = 600
-_REMOTE_CACHE: dict[int, tuple[float, dict[str, Any]]] = {}
-
-
-def _picks_event(entry: dict[str, Any], events: list[dict[str, Any]]) -> int | None:
-    """Choose the event whose saved squad should be shown right now."""
-    upcoming = next(
-        (event for event in events if event.get("is_next") and event.get("id")),
-        None,
-    )
-    current = next(
-        (event for event in events if event.get("is_current") and event.get("id")),
-        None,
-    )
-    selected = upcoming or current
-    if selected is not None:
-        return int(selected["id"])
-    raw_event = entry.get("current_event")
-    return int(raw_event) if raw_event else None
+REMOTE_CACHE_POLICY = MY_TEAM_POLICY
+_REMOTE_CACHE = FreshnessCache()
 
 
 def _picks_event_candidates(entry: dict[str, Any], events: list[dict[str, Any]]) -> list[int]:
-    candidates = {
-        int(event["id"])
-        for event in events
-        if event.get("id")
-    }
-    raw_event = entry.get("current_event")
-    if raw_event:
-        candidates.add(int(raw_event))
+    """Return every usable FPL event, newest first, regardless of flags."""
+    candidates: set[int] = set()
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        try:
+            event_id = int(event.get("id"))
+        except (TypeError, ValueError):
+            continue
+        if event_id > 0:
+            candidates.add(event_id)
+    try:
+        current_event = int(entry.get("current_event"))
+    except (TypeError, ValueError):
+        current_event = 0
+    if current_event > 0:
+        candidates.add(current_event)
     return sorted(candidates, reverse=True)
 
 
 def clear_remote_team_cache(entry_id: int | None = None) -> None:
     """Invalidate one linked team, or every linked team when no ID is given."""
-    if entry_id is None:
-        _REMOTE_CACHE.clear()
-    else:
-        _REMOTE_CACHE.pop(entry_id, None)
+    key = f"entry:{entry_id}" if entry_id is not None else None
+    _REMOTE_CACHE.invalidate(key)
 
 
-def _remote_team_data(client: FPLClient, entry_id: int) -> dict[str, Any]:
-    now = time.monotonic()
-    cached = _REMOTE_CACHE.get(entry_id)
-    if cached and now - cached[0] < REMOTE_CACHE_TTL_SECONDS:
-        return cached[1]
-    try:
-        entry = client.entry(entry_id)
-        benchmark_events = client.bootstrap().get("events", [])
-        event_candidates = _picks_event_candidates(entry, benchmark_events)
-        history: dict[str, Any] = {"current": []}
-        picks: list[dict[str, Any]] = []
-        picks_event = None
-        last_picks_error: Exception | None = None
-        for candidate in event_candidates:
-            try:
-                candidate_picks = client.entry_picks(entry_id, candidate).get("picks", [])
-            except (RuntimeError, ValueError) as exc:
-                last_picks_error = exc
-                continue
-            picks_event = candidate
+def _load_remote_team_data(client: FPLClient, entry_id: int) -> dict[str, Any]:
+    """Load one linked-team snapshot without caching or presentation metadata."""
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        entry_future = executor.submit(client.entry, entry_id)
+        bootstrap_future = executor.submit(client.bootstrap)
+        entry = entry_future.result()
+        benchmark_events = bootstrap_future.result().get("events", [])
+
+    if not isinstance(benchmark_events, list):
+        benchmark_events = []
+    picks: list[dict[str, Any]] = []
+    picks_event: int | None = None
+    last_picks_error: Exception | None = None
+    for candidate in _picks_event_candidates(entry, benchmark_events):
+        try:
+            candidate_payload = client.entry_picks(entry_id, candidate)
+        except (RuntimeError, ValueError) as error:
+            last_picks_error = error
+            continue
+        candidate_picks = candidate_payload.get("picks") if isinstance(candidate_payload, dict) else None
+        if isinstance(candidate_picks, list) and candidate_picks:
             picks = candidate_picks
-            if picks:
-                break
-        if picks_event is None and last_picks_error is not None:
-            raise last_picks_error
-        if picks_event:
-            history = client.entry_history(entry_id)
-        data = {
-            "entry": entry,
-            "history": history,
-            "benchmark_events": benchmark_events,
-            "picks": picks,
-            "picks_event": picks_event,
+            picks_event = candidate
+            break
+
+    if picks_event is None and last_picks_error is not None:
+        raise last_picks_error
+    history: dict[str, Any] = {"current": []}
+    if picks_event is not None:
+        history = client.entry_history(entry_id)
+    return {
+        "entry": entry,
+        "history": history,
+        "benchmark_events": benchmark_events,
+        "picks": picks,
+        "picks_event": picks_event,
+    }
+
+
+def _freshness_metadata(record: Any, event: int | None) -> dict[str, Any]:
+    return {
+        "dataset": REMOTE_CACHE_POLICY.name,
+        "fetched_at": record.fetched_at,
+        "expires_at": record.expires_at,
+        "event": event,
+        "cache_hit": record.cache_hit,
+        "stale": record.stale,
+        "last_error": record.last_error,
+    }
+
+
+def _remote_team_data(
+    client: FPLClient, entry_id: int, *, force: bool = False
+) -> dict[str, Any]:
+    """Return a cached linked-team snapshot with internal freshness metadata."""
+    try:
+        record = _REMOTE_CACHE.get(
+            f"entry:{entry_id}",
+            lambda: _load_remote_team_data(client, entry_id),
+            REMOTE_CACHE_POLICY,
+            force=force,
+        )
+    except (RuntimeError, ValueError) as error:
+        return {
+            "error": "Team data is temporarily unavailable.",
+            "_freshness": {
+                "dataset": REMOTE_CACHE_POLICY.name,
+                "fetched_at": None,
+                "expires_at": None,
+                "event": None,
+                "cache_hit": False,
+                "stale": False,
+                "last_error": str(error),
+            },
         }
-    except (RuntimeError, ValueError):
-        data = {"error": "Team data is temporarily unavailable."}
-    _REMOTE_CACHE[entry_id] = (now, data)
+    data = dict(record.value)
+    data["_freshness"] = _freshness_metadata(record, data.get("picks_event"))
     return data
 
 
@@ -97,7 +128,11 @@ def linked_team_data(db: Session, client: FPLClient, settings: Settings) -> dict
         return None
     remote = _remote_team_data(client, settings.fpl_entry_id)
     if "error" in remote:
-        return {"entry_id": settings.fpl_entry_id, "error": remote["error"]}
+        return {
+            "entry_id": settings.fpl_entry_id,
+            "error": remote["error"],
+            "_freshness": remote["_freshness"],
+        }
     entry = remote["entry"]
     current_event = remote["picks_event"]
     history = remote["history"]
@@ -136,6 +171,7 @@ def linked_team_data(db: Session, client: FPLClient, settings: Settings) -> dict
         "picks_available": bool(picks),
         "performance": performance,
         "benchmark_status": "The public FPL payload does not currently provide top-10k or top-10% performance series.",
+        "_freshness": remote["_freshness"],
     }
 
 
