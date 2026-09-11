@@ -118,33 +118,49 @@ def test_captaincy_names_the_gameweek_it_is_advising_on(tmp_path):
 
 
 def test_fixtures_page_renders_stored_team_fixtures(tmp_path):
-    """A fixture page must show stored FDR data rather than an empty shell."""
-    client, _ = _seeded(tmp_path, LiveClient, "fixtures.db")
+    """Fixture cells retain doubles, FDR text, badges, and accessible detail."""
+    client, _ = _seeded(tmp_path, SquadClient, "fixtures.db")
     try:
         body = client.get("/fixtures").text
         assert "Next 10 fixtures" in body
         assert "Difficulty" in body
         assert "Test FC" in body
+        assert body.count('class="fixture-cell difficulty-2"') == 2
+        assert body.count("GW2") >= 2
+        assert '<ul class="fixture-strip">' in body
+        assert (
+            'src="https://resources.premierleague.com/premierleague/badges/t2.png" '
+            'loading="lazy" alt="Other FC badge"'
+        ) in body
+        assert "Other FC, Gameweek 2, away, difficulty 2." in body
     finally:
         app.dependency_overrides.clear()
 
 
 def test_performance_page_renders_stored_team_form(tmp_path):
-    """A performance page must show scored results with all three form labels."""
-    client, Session = _seeded(tmp_path, LiveClient, "performance.db")
+    """Validated W/D/L results show form and make a partial sample explicit."""
+    client, Session = _seeded(tmp_path, SquadClient, "performance.db")
     try:
         with Session() as db:
-            fixture = db.get(Fixture, 1)
-            fixture.raw = {
-                **fixture.raw,
-                "team_h_score": 2,
-                "team_a_score": 1,
-            }
+            for fixture_id, home_score, away_score in ((1, 2, 1), (2, 1, 1), (3, 0, 1)):
+                fixture = db.get(Fixture, fixture_id)
+                fixture.finished = True
+                fixture.raw = {
+                    **fixture.raw,
+                    "team_h_score": home_score,
+                    "team_a_score": away_score,
+                }
             db.commit()
         body = client.get("/performance").text
         assert "Last 10 matches" in body
         assert "Points per game" in body
         assert "W-D-L" in body
+        assert '<ul class="result-strip">' in body
+        assert 'class="result-cell result-w"' in body
+        assert 'class="result-cell result-d"' in body
+        assert 'class="result-cell result-l"' in body
+        assert "3 of 10 validated results" in body
+        assert "Form incomplete" in body
     finally:
         app.dependency_overrides.clear()
 

@@ -250,6 +250,8 @@ def team_performance(db: Session, *, limit: int = 10) -> list[dict[str, Any]]:
                 "points_per_game": points / len(results) if results else None,
                 "goals_for": sum(result["goals_for"] for result in results),
                 "goals_against": sum(result["goals_against"] for result in results),
+                "available": len(results),
+                "complete": len(results) == limit,
             }
         )
 

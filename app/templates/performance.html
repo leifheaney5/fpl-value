@@ -6,11 +6,11 @@
   <div class="panel-title"><h2>Current form</h2><span class="muted">Completed matches only</span></div>
   {% set teams_with_results = rows|selectattr("results")|list %}
   {% if teams_with_results %}
-  <div class="table-wrap"><table class="data-table"><thead><tr><th>Team</th><th>W-D-L</th><th>Points</th><th>Points per game</th><th>GF</th><th>GA</th><th>Last 10 matches</th></tr></thead><tbody>
+  <div class="table-wrap"><table class="data-table"><thead><tr><th>Team</th><th>W-D-L</th><th>Points</th><th>Points per game</th><th>GF</th><th>GA</th><th>Validated</th><th>Last 10 matches</th></tr></thead><tbody>
   {% for row in teams_with_results %}<tr>
-    <td><img class="team-badge" src="https://resources.premierleague.com/premierleague/badges/t{{ row.team.id }}.png" alt="{{ row.team.short_name }} badge"><strong>{{ row.team.name }}</strong><small>{{ row.team.short_name }}</small></td>
-    <td>{{ row.wins }}-{{ row.draws }}-{{ row.losses }}</td><td>{{ row.points }}</td><td>{{ "%.2f"|format(row.points_per_game) }}</td><td>{{ row.goals_for }}</td><td>{{ row.goals_against }}</td>
-    <td><div class="result-strip">{% for result in row.results %}<span class="result-cell result-{{ result.result|lower }}" aria-label="{{ result.result }} against {{ result.opponent }}, {{ result.score }}"><b>{{ result.result }}</b><small>{{ result.opponent[:3]|upper }} {{ result.score }}</small></span>{% endfor %}</div></td>
+    <td><img class="team-badge" src="https://resources.premierleague.com/premierleague/badges/t{{ row.team.id }}.png" loading="lazy" alt="{{ row.team.short_name }} badge"><strong>{{ row.team.name }}</strong><small>{{ row.team.short_name }}</small></td>
+    <td>{{ row.wins }}-{{ row.draws }}-{{ row.losses }}</td><td>{{ row.points }}</td><td>{{ "%.2f"|format(row.points_per_game) }}</td><td>{{ row.goals_for }}</td><td>{{ row.goals_against }}</td><td>{{ row.available }} of 10 validated results{% if not row.complete %}<small>Form incomplete</small>{% endif %}</td>
+    <td><ul class="result-strip">{% for result in row.results %}<li class="result-cell result-{{ result.result|lower }}"><b>{{ result.result }}</b><small>{{ result.opponent[:3]|upper }} {{ result.score }}</small><span class="sr-only">{{ {'W': 'Win', 'D': 'Draw', 'L': 'Loss'}[result.result] }} against {{ result.opponent }}, {{ result.score }}.</span></li>{% endfor %}</ul></td>
   </tr>{% endfor %}
   </tbody></table></div>
   {% else %}<p class="empty team-empty">No scored fixtures are available yet.</p>{% endif %}

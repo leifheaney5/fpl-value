@@ -228,6 +228,8 @@ def test_team_performance_uses_latest_ten_scored_matches_in_chronological_order(
     assert alpha["points_per_game"] == 1.5
     assert alpha["goals_for"] == 14
     assert alpha["goals_against"] == 11
+    assert alpha["available"] == 10
+    assert alpha["complete"] is True
 
 
 def test_team_performance_ignores_invalid_newer_scores_before_limiting(tmp_path):
