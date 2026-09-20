@@ -143,6 +143,12 @@ def recent_window(
         return None, None
     if team_matches <= size:
         return points / team_matches, minutes / team_matches
+    # Until a match is played the FPL API keeps serving last season's totals,
+    # so a reading taken at zero team matches holds numbers about the wrong
+    # season. This season it stands for nothing scored and nothing played.
+    checkpoints = [
+        (0, 0, 0) if item[0] <= 0 else item for item in checkpoints
+    ]
     older = [item for item in checkpoints if item[0] <= team_matches - size]
     newer = [item for item in checkpoints if team_matches - size < item[0] < team_matches]
     if older:

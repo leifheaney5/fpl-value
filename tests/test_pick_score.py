@@ -43,6 +43,17 @@ def test_recent_window_widens_over_a_gap_and_shortens_when_history_is_young():
     assert recent_window([(5, 22, 700)], team_matches=8, points=40, minutes=680) == (None, None)
 
 
+def test_recent_window_ignores_carried_over_totals_in_a_preseason_reading():
+    # Production, September 2026: the zero-match reading held last season's
+    # 170 points and 3330 minutes, which disabled the window for everyone.
+    checkpoints = [(0, 170, 3330), (2, 19, 225), (3, 29, 360)]
+
+    points, minutes = recent_window(checkpoints, team_matches=4, points=43, minutes=450)
+
+    assert points == pytest.approx(43 / 4)
+    assert minutes == pytest.approx(450 / 4)
+
+
 def _refreshed(tmp_path, client):
     url = f"sqlite:///{tmp_path / 'pick.db'}"
     engine = create_engine(url)
