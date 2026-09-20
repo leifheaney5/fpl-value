@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Daily refresh for the self-hosted stack, invoked by host cron.
+# Hourly refresh for the self-hosted stack, invoked by host cron.
 #
 # This replaces the Railway cron service. Railway scheduled it at `0 14,15 UTC`
 # — two entries, because a UTC schedule drifts an hour against the New York
@@ -7,10 +7,16 @@
 # America/New_York, the same zone as APP_TIMEZONE, so one entry is both
 # sufficient and correct:
 #
-#   0 10 * * * /home/leif/fpl-value-studio/deploy/fpl-studio/run-refresh-task.sh >> /home/leif/fpl-studio-refresh.log 2>&1
+#   5 * * * * /home/leif/fpl-value-studio/deploy/fpl-studio/run-refresh-task.sh >> /home/leif/fpl-studio-refresh.log 2>&1
 #
-# `refresh --scheduled` still checks APP_TIMEZONE and REFRESH_HOUR itself, so a
-# stray second invocation on the same day is a no-op rather than a duplicate.
+# Five past the hour, not on it: FPL price changes and gameweek rollovers land
+# on the hour, and a request at :00 can catch the API mid-update.
+#
+# The compose `refresh` service sets REFRESH_HOURLY=true, so every invocation
+# refreshes. Storage does not grow with the cadence: each refresh collapses days
+# older than SNAPSHOT_HOURLY_KEEP_HOURS to their final snapshot. Without
+# REFRESH_HOURLY, `refresh --scheduled` runs only in REFRESH_HOUR and every
+# other invocation is a no-op.
 set -euo pipefail
 
 cd "$(dirname "$0")"

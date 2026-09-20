@@ -29,6 +29,13 @@ class Settings(BaseSettings):
     login_lockout_seconds: int = Field(default=900, ge=30)
     app_timezone: str = "America/New_York"
     refresh_hour: int = Field(default=10, ge=0, le=23)
+    # When true a scheduled refresh runs whenever it is invoked, so an hourly
+    # cron keeps the data current to the hour. When false it runs only in
+    # `refresh_hour`, and any other invocation is a no-op.
+    refresh_hourly: bool = False
+    # Hour-level snapshots are kept this long; older days collapse to their
+    # final snapshot. See app/services/snapshot_retention.py.
+    snapshot_hourly_keep_hours: int = Field(default=48, ge=24)
     forward_fixture_count: int = Field(default=5, ge=1, le=10)
     history_retention_days: int = Field(default=730, ge=30)
     reliability_sample_minutes: int = Field(default=900, ge=1)

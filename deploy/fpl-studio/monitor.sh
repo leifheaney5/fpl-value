@@ -23,9 +23,9 @@ NTFY_TOPIC="${NTFY_TOPIC:-fpl-studio}"
 APP_URL="${APP_URL:-http://127.0.0.1:8788}"
 SITE_URL="${SITE_URL:-https://fpl-studio.leif.media}"
 STATE_DIR="${STATE_DIR:-/home/leif/.fpl-studio-monitor}"
-# The refresh runs daily at 10:00. Allow a missed run plus slack before
+# The refresh runs hourly. Allow two missed runs plus slack before
 # alerting, so a single transient FPL API failure is not paged at 10:05.
-REFRESH_MAX_AGE_HOURS="${REFRESH_MAX_AGE_HOURS:-30}"
+REFRESH_MAX_AGE_HOURS="${REFRESH_MAX_AGE_HOURS:-3}"
 
 mkdir -p "$STATE_DIR"
 

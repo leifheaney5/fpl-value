@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Hourly data sync
+
+- `REFRESH_HOURLY=true` makes every scheduled refresh run, so an hourly cron
+  keeps the data current to the hour. The self-hosted stack sets it and moves
+  cron from `0 10 * * *` to `5 * * * *`; the watchdog's staleness limit drops
+  from 30 hours to 3.
+- Snapshots older than `SNAPSHOT_HOURLY_KEEP_HOURS` collapse to one per local
+  day, so the cadence does not grow storage (about 12 GB a year otherwise).
+
 ### Perfect Pick
 
 - A single reference score, shown between Pos %ile and Reliable (migration

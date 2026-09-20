@@ -46,7 +46,7 @@ troubleshooting — is in [`deploy/fpl-studio/README.md`](deploy/fpl-studio/READ
 | Compose file | `/home/leif/fpl-value-studio/deploy/fpl-studio/docker-compose.yml` |
 | Loopback port | `127.0.0.1:8788` |
 | Public name | `fpl-studio.leif.media`, routed by the host Caddy |
-| Refresh | host cron, `0 10 * * *` |
+| Refresh | host cron, hourly at `5 * * * *` |
 
 Caddy binds the Tailscale address only, so the site answers **on the tailnet and
 nowhere else**. This is the material difference from Railway, which served it on
@@ -99,12 +99,18 @@ for by name and, on a networked database, seconded by `TRUSTED_NETWORK`.
 every query. Set it before the season rolls over; leaving it stale will file new
 snapshots under the previous season.
 
-Host cron runs the refresh at `0 10 * * *`. One entry suffices because
-`linux-leif`'s clock is `America/New_York`, the same zone as `APP_TIMEZONE`.
-Railway needed two (`0 14,15 * * *`) only because its scheduler is UTC, which
-drifts an hour against the New York refresh hour across daylight saving. The CLI
-checks `APP_TIMEZONE` and `REFRESH_HOUR` regardless, so a stray second
-invocation is a no-op rather than a duplicate.
+Host cron runs the refresh hourly at `5 * * * *` — five past, because FPL price
+changes and gameweek rollovers land on the hour. The compose `refresh` service
+sets `REFRESH_HOURLY=true`, which makes every scheduled invocation refresh.
+Without it the CLI refreshes only in `REFRESH_HOUR` (in `APP_TIMEZONE`) and any
+other invocation is a no-op, which is how the previous daily schedule worked.
+
+Hourly refreshes do not grow storage. Each refresh stores about 1.4 MB of
+snapshots, so an unpruned hourly cadence would add roughly 12 GB a year. Every
+successful refresh therefore collapses days older than
+`SNAPSHOT_HOURLY_KEEP_HOURS` (default 48) to their final snapshot, for the
+current season only. Day, week and month movement read the latest snapshot at or
+before a target time, so they are unaffected.
 
 ## Local verification
 

@@ -44,7 +44,7 @@ services:
         condition: service_healthy
     networks: [fpl]
 
-  # One-shot daily refresh, replacing the Railway cron service. Started by host
+  # One-shot refresh, replacing the Railway cron service. Started hourly by host
   # cron through run-refresh-task.sh. It reuses the image built for `app` rather
   # than declaring its own `build`, so a refresh never rebuilds anything, and
   # the `tasks` profile keeps it out of `docker compose up`.
@@ -54,6 +54,9 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-fpl}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fpl}
+      # Every invocation refreshes; cron sets the cadence. Remove this line to
+      # revert to one refresh a day, in REFRESH_HOUR.
+      REFRESH_HOURLY: "true"
     command: ["bash", "scripts/run-refresh.sh", "--scheduled"]
     depends_on:
       postgres:

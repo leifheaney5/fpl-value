@@ -36,6 +36,7 @@ from app.db.models import (
     SchemaField,
     Team,
 )
+from app.services.snapshot_retention import thin_snapshots
 
 
 _refresh_lock = Lock()
@@ -848,6 +849,14 @@ def refresh_data(
                 )
             )
 
+        thinned = thin_snapshots(
+            db,
+            settings.current_season,
+            now=captured_at,
+            keep_hours=settings.snapshot_hourly_keep_hours,
+            timezone_name=settings.app_timezone,
+        )
+
         run.status = "success"
         run.completed_at = utcnow()
         run.player_count = len(computed)
@@ -860,6 +869,7 @@ def refresh_data(
                 1 for row in computed if row.get("value_rank") is not None
             ),
             "ranking_exclusions": value_exclusions,
+            "snapshots_thinned": thinned,
             "schema_baseline": schema_result["baseline"],
             "schema_fields": schema_result["fields"],
         }

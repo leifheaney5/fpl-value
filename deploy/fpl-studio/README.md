@@ -12,7 +12,7 @@ model-artefact handling are in [`../../DEPLOYMENT.md`](../../DEPLOYMENT.md).
 | Loopback | `127.0.0.1:8788` |
 | Containers | `fpl-studio-app-1`, `fpl-studio-postgres-1` |
 | Volume | `fpl-studio_fpl_postgres` |
-| Refresh | host cron, `0 10 * * *` → `/home/leif/fpl-studio-refresh.log` |
+| Refresh | host cron, hourly at `5 * * * *` → `/home/leif/fpl-studio-refresh.log` |
 | Monitoring | host cron, `*/5 * * * *` → ntfy topic `fpl-studio` |
 | Access | `ACCESS_MODE=local` — no sign-in; the tailnet is the access control |
 
@@ -67,6 +67,17 @@ emits CRLF; `set -euo pipefail\r` then fails at boot with
 `.env` is not in either archive and is never overwritten by a deploy.
 
 ## Refresh
+
+Cron runs the refresh every hour:
+
+```cron
+5 * * * * /home/leif/fpl-value-studio/deploy/fpl-studio/run-refresh-task.sh >> /home/leif/fpl-studio-refresh.log 2>&1
+```
+
+The `refresh` service sets `REFRESH_HOURLY=true`; without it only the
+`REFRESH_HOUR` invocation does anything. Storage stays flat because each refresh
+thins days older than 48 hours to one snapshot. `monitor.sh` alerts when the
+newest successful refresh is more than 3 hours old.
 
 `run-refresh-task.sh` is what cron runs; run it by hand to reproduce cron
 exactly rather than approximating it:

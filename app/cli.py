@@ -22,7 +22,7 @@ def command_init_db() -> int:
 def command_refresh(scheduled: bool, force: bool) -> int:
     settings = get_settings()
 
-    if scheduled and not force:
+    if scheduled and not force and not settings.refresh_hourly:
         local_now = datetime.now(ZoneInfo(settings.app_timezone))
         if local_now.hour != settings.refresh_hour:
             print(
