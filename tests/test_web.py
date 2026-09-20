@@ -90,9 +90,11 @@ def test_header_regions_center_navigation_and_preserve_responsive_collapse(tmp_p
         assert ".site-header {" in css
         assert "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr)" in css
         assert ".site-header__nav {" in css
-        assert "@media (max-width: 1000px)" in css
+        assert "@media (max-width: 1200px)" in css
+        assert "grid-template-columns: minmax(0, 1fr) auto" in responsive_rules_at_viewport(css, viewport_width=1024)
         narrow_rules = responsive_rules_at_viewport(css, viewport_width=600)
         assert re.search(r"\.site-header__nav\s*\{\s*display:\s*none;\s*\}", narrow_rules)
+        assert "grid-template-columns: minmax(0, 1fr) auto" in narrow_rules
     finally:
         app.dependency_overrides.clear()
 
@@ -109,10 +111,151 @@ def test_credentials_use_constant_time_path_and_safe_redirect():
     assert safe_next_path("//example.invalid") == "/"
 
 
+def test_comparison_scale_ranks_values_and_keeps_missing_values_neutral():
+    assert routes.comparison_scale([10, 20, 30]) == [
+        "compare-scale-0",
+        "compare-scale-2",
+        "compare-scale-4",
+    ]
+    assert routes.comparison_scale([10, 20, 30], lower_is_better=True) == [
+        "compare-scale-4",
+        "compare-scale-2",
+        "compare-scale-0",
+    ]
+    assert routes.comparison_scale([10, None, 30]) == [
+        "compare-scale-0",
+        "compare-scale-neutral",
+        "compare-scale-4",
+    ]
+    assert routes.comparison_scale([10, 10]) == [
+        "compare-scale-neutral",
+        "compare-scale-neutral",
+    ]
+
+
+def test_compare_context_uses_metric_aware_scales(monkeypatch):
+    def row(player_id, *, price, value, risk):
+        snapshot = SimpleNamespace(
+            price=price,
+            total_points=10 if player_id == 1 else 20,
+            value=value,
+            reliable_value=value,
+            forward_value=value,
+            projected_points_5=value,
+            rotation_risk=risk,
+            points_per_game=value,
+            points_per_90=value,
+            points_per_start=value,
+            minutes=900 if player_id == 1 else 1_000,
+            start_rate=value,
+            expected_minutes=value,
+            ownership=value,
+            average_fixture_difficulty=risk,
+            metric_status={},
+        )
+        return {"player": SimpleNamespace(id=player_id), "snapshot": snapshot}
+
+    rows = [
+        row(1, price=6.0, value=1.0, risk=4.0),
+        row(2, price=8.0, value=2.0, risk=2.0),
+    ]
+    monkeypatch.setattr(routes, "filtered_players", lambda db, season, sort: rows)
+    monkeypatch.setattr(routes.templates, "TemplateResponse", lambda **kwargs: kwargs["context"])
+
+    context = routes.compare(
+        SimpleNamespace(), db=object(), settings=Settings(current_season="2026/27"), ids=[1, 2]
+    )
+    scales = {metric["label"]: metric["classes"] for metric in context["comparison_metrics"]}
+
+    assert scales["Price"] == ["compare-scale-4", "compare-scale-0"]
+    assert scales["Raw value"] == ["compare-scale-0", "compare-scale-4"]
+    assert scales["Rotation risk"] == ["compare-scale-0", "compare-scale-4"]
+
+
+def test_page_asset_versions_match_served_contents():
+    from hashlib import sha256
+
+    client = TestClient(app)
+    request = SimpleNamespace(state=SimpleNamespace(
+        can_access_personal=False, authenticated=False, sign_in_available=False,
+    ))
+    html = routes.templates.env.get_template("base.html").render(request=request)
+    assets = re.findall(r'(?:src|href)="(/static/app\.(?:css|js)\?v=([a-f0-9]{12}))"', html)
+    assert len(assets) == 2
+    for url, version in assets:
+        response = client.get(url)
+        assert response.status_code == 200
+        assert sha256(response.content).hexdigest()[:12] == version
+    assert f'/static/app.css?v={routes.templates.env.globals["asset_versions"]["app.css"]}' in client.get("/login").text
+
+
+def test_column_help_glossary_covers_every_table_header_key():
+    from jinja2 import nodes
+    from app.web.column_help import COLUMN_HELP
+
+    template_dir = Path("app/templates")
+    header_keys = set()
+    for template_path in template_dir.glob("*.html"):
+        source = template_path.read_text(encoding="utf-8")
+        header_keys.update(re.findall(r'info_header\([^,]+,\s*"([^"]+)"', source))
+        # Sortable tables supply their help keys as (label, key) tuples.
+        tree = routes.templates.env.parse(source)
+        for loop in tree.find_all(nodes.For):
+            if isinstance(loop.target, nodes.Tuple) and [item.name for item in loop.target.items] == ["label", "key"]:
+                header_keys.update(item.items[1].value for item in loop.iter.items)
+
+    header_keys.update(name for _, name, _ in routes._COMPARE_METRICS)
+
+    assert len(header_keys) >= 30
+    assert header_keys <= COLUMN_HELP.keys()
+    assert all(COLUMN_HELP[key].strip() for key in header_keys)
+
+
+def test_every_table_bearing_template_uses_shared_column_help():
+    template_dir = Path("app/templates")
+
+    table_templates = []
+    for template_path in template_dir.glob("*.html"):
+        source = template_path.read_text(encoding="utf-8")
+        if "<th" in source:
+            table_templates.append(template_path.name)
+            assert "info_header" in source, template_path.name
+            for header in re.findall(r"<th\b[^>]*>(.*?)</th>", source, re.DOTALL):
+                assert "info_header(" in header, (template_path.name, header)
+
+    assert len(table_templates) >= 15
+
+
+def test_column_help_has_hover_and_keyboard_focus_states():
+    css = (Path(routes.__file__).parent.parent / "static" / "app.css").read_text(encoding="utf-8")
+
+    assert ".column-heading:hover .column-tooltip" in css
+    assert '.column-heading[tabindex="0"]:focus-visible .column-tooltip' in css
+    assert ".column-heading[tabindex=\"0\"]" in css
+
+
+def test_info_header_renders_explanation_and_keyboard_target():
+    template = routes.templates.env.from_string(
+        '{% from "_macros.html" import info_header %}{{ info_header("Price", "price") }}'
+    )
+
+    rendered = template.render()
+
+    assert 'class="column-heading column-heading--focusable"' in rendered
+    assert 'tabindex="0"' in rendered
+    assert "current FPL price, shown in millions of pounds" in rendered
+    assert 'role="tooltip"' in rendered
+
+
 def test_dashboard_passes_its_loaded_rows_to_my_team(monkeypatch):
     rows = [{"player": object(), "snapshot": object()}]
     captured_rows = []
     monkeypatch.setattr(routes, "dashboard_data", lambda db, season: {"rows": rows})
+    monkeypatch.setattr(
+        routes,
+        "data_status",
+        lambda db, season: {"state": "never_refreshed", "season": season},
+    )
     monkeypatch.setattr(routes, "linked_team_data", lambda db, client, settings, *, rows=None: captured_rows.append(rows))
     monkeypatch.setattr(routes.templates, "TemplateResponse", lambda **kwargs: kwargs["context"])
     settings = Settings(access_mode="local", fpl_entry_id=123)
@@ -128,6 +271,7 @@ def test_recommendation_passes_its_loaded_rows_to_my_team(monkeypatch):
     captured_rows = []
     monkeypatch.setattr(routes, "latest_rows", lambda db, season: rows)
     monkeypatch.setattr(routes, "recommend_team_cached", lambda candidate_rows, budget, strategy: None)
+    monkeypatch.setattr(routes, "compare_recommendations", lambda candidate_rows, budget: [])
     monkeypatch.setattr(routes, "linked_team_data", lambda db, client, settings, *, rows=None: captured_rows.append(rows))
     monkeypatch.setattr(routes.templates, "TemplateResponse", lambda **kwargs: kwargs["context"])
     settings = Settings(access_mode="local", fpl_entry_id=123)

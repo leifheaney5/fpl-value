@@ -6,6 +6,7 @@ from app.services.team_recommender import (
     NotReadyError,
     STRATEGIES,
     _projected_output,
+    compare_recommendations,
     recommend_team,
 )
 
@@ -37,6 +38,7 @@ def _pool(projected=lambda position, index: 25.0 - index, price_spread=True):
                         availability_factor=1.0,
                         expected_minutes=85.0, upcoming_fixture_count=5,
                         rotation_risk=10.0,
+                        captured_at=1,
                     ),
                 }
             )
@@ -268,3 +270,28 @@ def test_strategy_changes_the_selected_squad_when_metrics_conflict():
 
 def test_recommender_exposes_additional_selection_modes():
     assert {"fixtures", "form", "reliable"}.issubset(STRATEGIES)
+
+
+def test_compare_recommendations_preserves_order_and_reports_differences():
+    rows = _pool()
+    mid_players = [row for row in rows if row["player"].position_short == "MID"]
+    mid_players[4]["snapshot"].projected_points_5 = 34.0
+    mid_players[4]["snapshot"].reliable_value = 2.0
+    mid_players[4]["snapshot"].forward_value = 2.0
+    mid_players[5]["snapshot"].projected_points_5 = 20.0
+    mid_players[5]["snapshot"].total_points = 280
+    mid_players[5]["snapshot"].reliable_value = 25.0
+    mid_players[5]["snapshot"].forward_value = 25.0
+    result = compare_recommendations(rows, 100.0)
+    assert [item["strategy"] for item in result] == list(STRATEGIES)
+    assert len({tuple(item["starting_ids"]) for item in result if item["state"] == "ready"}) > 1
+    assert any(item["changed_from_previous"] for item in result[1:])
+
+
+def test_compare_recommendations_reports_not_ready_without_fabricating_squads():
+    result = compare_recommendations(
+        _pool(projected=lambda position, index: 0.0),
+        100.0,
+    )
+    assert all(item["state"] == "not_ready" for item in result)
+    assert all(item["starting_ids"] == [] for item in result)

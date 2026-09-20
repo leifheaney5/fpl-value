@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import info_header %}
 {% block title %}Movers · FPL Value Studio{% endblock %}
 {% block content %}
 <div class="page-heading">
@@ -25,7 +26,7 @@
     <h2>{{ title }}</h2>
     <div class="table-wrap">
     <table class="data-table">
-      <thead><tr><th>Player</th><th>Price</th><th>Value</th><th>Δ Value</th><th>Δ Price</th><th>Δ Ownership</th><th>Δ Rank</th></tr></thead>
+      <thead><tr><th>{{ info_header("Player", "player") }}</th><th>{{ info_header("Price", "price") }}</th><th>{{ info_header("Value", "value") }}</th><th>{{ info_header("Δ Value", "delta_value") }}</th><th>{{ info_header("Δ Price", "delta_price") }}</th><th>{{ info_header("Δ Ownership", "delta_ownership") }}</th><th>{{ info_header("Δ Rank", "delta_rank") }}</th></tr></thead>
       <tbody>
       {% for row in rows %}
         <tr>
@@ -57,7 +58,7 @@
     <h2>{{ label }} risers and fallers</h2>
     <div class="table-wrap">
       <table class="data-table">
-        <thead><tr><th>Player</th><th>Risers</th><th>Fallers</th></tr></thead>
+        <thead><tr><th>{{ info_header("Rank", "list_rank") }}</th><th>{{ info_header("Risers", "risers") }}</th><th>{{ info_header("Fallers", "fallers") }}</th></tr></thead>
         <tbody>
         {% for index in range([movers[metric + '_risers']|length, movers[metric + '_fallers']|length]|max) %}
           <tr>

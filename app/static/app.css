@@ -63,6 +63,7 @@ button.ghost, .button.ghost { background: transparent; color: var(--text); borde
 .actions { display: flex; flex-wrap: wrap; gap: .7rem; }
 .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 1.5rem 0; }
 .cards.six { grid-template-columns: repeat(6, 1fr); }
+.cards.seven { grid-template-columns: repeat(7, 1fr); }
 .stat, .panel {
   background: linear-gradient(145deg, rgba(19,36,52,.95), rgba(12,26,38,.95));
   border: 1px solid var(--line); border-radius: 16px;
@@ -127,9 +128,32 @@ td small { display: block; color: var(--muted); }
 .compare-launcher h2 { margin: .25rem 0; }
 .compare-inline-form { display: flex; align-items: end; gap: .6rem; min-width: min(520px, 100%); }
 .compare-inline-form select { min-width: 260px; }
+.comparison-guide { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: 0 0 .75rem; color: var(--muted); font-size: .78rem; }
+.comparison-guide span { padding: .2rem .45rem; border-radius: 5px; }
+.comparison-guide span:first-child { padding-left: 0; }
+.comparison .compare-scale-0, .comparison .compare-scale-1, .comparison .compare-scale-2, .comparison .compare-scale-3, .comparison .compare-scale-4 { color: #071019; font-weight: 800; }
+.compare-scale-0 { background: rgba(255,91,105,.72); }
+.compare-scale-1 { background: rgba(242,138,60,.76); }
+.compare-scale-2 { background: rgba(241,207,74,.82); }
+.compare-scale-3 { background: rgba(139,214,90,.78); }
+.compare-scale-4 { background: rgba(43,214,123,.82); }
+.compare-scale-neutral { background: rgba(135,149,161,.16); color: var(--gray); }
+.comparison td[class^="compare-scale-"] { text-align: center; font-weight: 750; }
+.column-heading { align-items: center; border-bottom: 1px dotted currentColor; cursor: help; display: inline-flex; gap: .3rem; position: relative; }
+.column-heading[tabindex="0"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.column-help-icon { align-items: center; border: 1px solid currentColor; border-radius: 50%; display: inline-flex; font-size: .65rem; height: 1rem; justify-content: center; line-height: 1; width: 1rem; }
+.column-tooltip { background: var(--panel-2); border: 1px solid var(--accent-2); border-radius: .45rem; box-shadow: 0 12px 28px rgb(0 0 0 / 30%); color: var(--text); font-size: .78rem; font-weight: 400; left: 0; letter-spacing: normal; line-height: 1.4; max-width: min(280px, calc(100vw - 2rem)); min-width: 190px; opacity: 0; padding: .65rem .75rem; pointer-events: none; position: absolute; text-align: left; text-transform: none; top: calc(100% + .55rem); transform: translateY(-.2rem); transition: opacity .15s ease, transform .15s ease, visibility .15s ease; visibility: hidden; white-space: normal; width: max-content; z-index: 30; }
+.column-heading:hover .column-tooltip, .column-heading[tabindex="0"]:focus-visible .column-tooltip, .sort-button:hover .column-tooltip, .sort-button:focus-visible .column-tooltip { opacity: 1; transform: translateY(0); visibility: visible; }
+.sort-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.column-tooltip--floating { position: fixed; inset: auto; width: 280px; min-width: 0; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto; z-index: 1000; transform: none; transition: none; }
+.column-tooltip--floating.is-open { opacity: 1; visibility: visible; pointer-events: auto; }
+.sort-button .column-label { color: inherit; }
 .spreadsheet-tabs { display: flex; flex-wrap: wrap; gap: .45rem; margin: 1rem 0 .75rem; }
 .spreadsheet-tab { padding: .55rem .8rem; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: var(--panel); font-weight: 750; }
 .spreadsheet-tab:hover, .spreadsheet-tab.active { color: #071019; background: var(--accent); border-color: var(--accent); }
+.spreadsheet-tab.history-toggle { margin-left: auto; border-color: var(--accent-2); }
+.spreadsheet-table .history-col-first { border-left: 2px solid var(--line); }
+.season-history-table th, .season-history-table td { white-space: nowrap; }
 .sheet-compare-actions { display: flex; align-items: center; gap: .8rem; margin: .75rem 0; }
 .sheet-compare-actions .muted { flex: 1; }
 .sheet-compare-actions button:disabled { opacity: .45; cursor: not-allowed; }
@@ -183,15 +207,16 @@ input, select {
 .login-card label { display: block; margin: 1rem 0; }
 .login-card button { width: 100%; }
 footer { border-top: 1px solid var(--line); color: var(--muted); text-align: center; padding: 2rem; }
-@media (max-width: 1000px) {
-  .cards, .cards.six { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 1200px) {
+  .cards, .cards.six, .cards.seven { grid-template-columns: repeat(2, 1fr); }
   .dashboard-grid { grid-template-columns: 1fr; }
   .filters, .compare-form { grid-template-columns: repeat(2, 1fr); }
+  .site-header { grid-template-columns: minmax(0, 1fr) auto; gap: 1rem; }
   .site-header__nav { display: none; }
 }
 @media (max-width: 600px) {
   .hero, .player-hero { align-items: flex-start; flex-direction: column; }
-  .cards, .cards.six, .filters, .compare-form { grid-template-columns: 1fr; }
+  .cards, .cards.six, .cards.seven, .filters, .compare-form { grid-template-columns: 1fr; }
   .settings-grid { grid-template-columns: 1fr; }
   .compare-launcher { align-items: stretch; flex-direction: column; }
   .compare-inline-form { flex-direction: column; align-items: stretch; min-width: 0; }
@@ -247,7 +272,9 @@ footer { border-top: 1px solid var(--line); color: var(--muted); text-align: cen
    tint stays faint enough that the text on top is still legible, and the
    colours match the chip tiers so the two never disagree. */
 .row-tier { border-left: 3px solid transparent; }
-.row-tier td:first-child { position: relative; }
+/* Sticky, not relative: relative out-specified the sheet's sticky name column
+   and let player names scroll out of view. Sticky still anchors children. */
+.row-tier td:first-child { position: sticky; }
 .row-top-10 { background: rgba(43,214,123,.10); box-shadow: inset 3px 0 0 rgba(43,214,123,.85); }
 .row-top-25 { background: rgba(241,207,74,.09); box-shadow: inset 3px 0 0 rgba(241,207,74,.85); }
 .row-top-50 { background: rgba(242,138,60,.08); box-shadow: inset 3px 0 0 rgba(242,138,60,.80); }

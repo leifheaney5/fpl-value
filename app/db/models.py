@@ -24,6 +24,9 @@ class Team(Base):
     __tablename__ = "teams"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # FPL's official badge code is distinct from the row/fixture team ID.
+    # Older imports may not have it, so the field remains nullable.
+    code: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     short_name: Mapped[str] = mapped_column(String(10), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -243,6 +246,16 @@ class PlayerSnapshot(Base):
         String(30), default="Not Ranked"
     )
 
+    # Perfect Pick: points per team match, nudged by form, scaled by whether the
+    # player is currently getting minutes. The one ordering that beat
+    # points-per-game on the walk-forward; see docs/RANKING_EVALUATION.md.
+    pick_score: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
+    pick_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pick_percentile: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pick_tier: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
     rotation_risk: Mapped[float | None] = mapped_column(Float, nullable=True)
     rotation_tier: Mapped[str] = mapped_column(
         String(30), default="Insufficient Data"
@@ -420,6 +433,52 @@ class GameweekHistory(Base):
     raw: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
+class PlayerSeasonAggregate(Base):
+    """One player's season, summed from ``gameweek_history``.
+
+    Completed seasons never change, so this is a derived table rather than a
+    cache: grouping ten seasons of history per request took several seconds.
+    """
+
+    __tablename__ = "player_season_aggregates"
+    __table_args__ = (
+        UniqueConstraint("player_code", "season", name="uq_season_aggregate"),
+        Index("ix_season_aggregate_season", "season"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    player_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    season: Mapped[str] = mapped_column(String(9), nullable=False)
+    # Every fixture the player was registered for, played or not. This is the
+    # denominator that makes availability measurable.
+    fixtures: Mapped[int] = mapped_column(Integer, nullable=False)
+    appearances: Mapped[int] = mapped_column(Integer, nullable=False)
+    minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    starts: Mapped[int] = mapped_column(Integer, nullable=False)
+    starts_derived: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    points: Mapped[int] = mapped_column(Integer, nullable=False)
+    goals: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    assists: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    clean_sheets: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    bonus: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Sum and sum of squares of points over appearances. A standard deviation
+    # across any set of seasons is derived from these; per-season deviations
+    # cannot be averaged.
+    appearance_points: Mapped[int] = mapped_column(Integer, nullable=False)
+    appearance_points_sq: Mapped[int] = mapped_column(Integer, nullable=False)
+    blanks: Mapped[int] = mapped_column(Integer, nullable=False)
+    hauls: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_min: Mapped[float | None] = mapped_column(Float, nullable=True)
+    price_max: Mapped[float | None] = mapped_column(Float, nullable=True)
+    position: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    team_name: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
 class Prediction(Base):
     """A stored projection, with the provenance needed to audit it later.
 
@@ -477,6 +536,28 @@ class AuditEvent(Base):
     path: Mapped[str] = mapped_column(String(300), default="")
     client: Mapped[str] = mapped_column(String(60), default="")
     detail: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class LinkedTeamSnapshot(Base):
+    """Last valid public FPL entry payload for the configured owner entry."""
+
+    __tablename__ = "linked_team_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    entry_id: Mapped[int] = mapped_column(Integer, nullable=False, unique=True, index=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    selected_event: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    stale: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_error: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
 
 class ImportRecord(Base):

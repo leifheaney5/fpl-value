@@ -1,0 +1,5 @@
+{% macro info_header(label, key, focusable=true) -%}
+<span class="column-heading{% if focusable %} column-heading--focusable{% endif %}"{% if focusable %} tabindex="0" role="button"{% endif %} aria-label="{{ label }}: {{ column_help(key) }}" title="{{ column_help(key) }}">
+  <span class="column-label">{{ label }}</span><span class="column-help-icon" aria-hidden="true">i</span><span class="column-tooltip" role="tooltip">{{ column_help(key) }}</span>
+</span>
+{%- endmacro %}

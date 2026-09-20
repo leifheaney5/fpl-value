@@ -85,8 +85,7 @@ class FreshnessCache:
                 record = self._records.get(key)
                 failed_load = self._failed_loads.get(key)
                 if (
-                    force
-                    and waited_for_generation == generation
+                    waited_for_generation == generation
                     and failed_load is not None
                     and failed_load[0] == generation
                 ):
@@ -194,5 +193,4 @@ class FreshnessCache:
             )
             for cache_key in keys:
                 self._generations[cache_key] = self._generations.get(cache_key, 0) + 1
-                self._records.pop(cache_key, None)
                 self._failed_loads.pop(cache_key, None)

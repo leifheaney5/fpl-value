@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import info_header %}
 {% block title %}{{ player.full_name }} · FPL Value Studio{% endblock %}
 {% block content %}
 <section class="player-hero">
@@ -23,7 +24,8 @@
   <a class="button ghost small" href="/compare?ids={{ player.id }}">Open comparison builder</a>
 </section>
 
-<section class="cards six">
+<section class="cards seven">
+  <article class="stat"><span>Perfect Pick</span><strong>{{ metric_cell(current, "pick_score") }}</strong>{% if current.pick_rank %}<small class="muted">Ranked {{ current.pick_rank }} overall</small>{% endif %}</article>
   <article class="stat"><span>Raw value</span><strong>{{ metric_cell(current, "value") }}</strong></article>
   <article class="stat"><span>Reliable value</span><strong>{{ metric_cell(current, "reliable_value") }}</strong></article>
   <article class="stat"><span>Forward value</span><strong>{{ metric_cell(current, "forward_value") }}</strong></article>
@@ -60,6 +62,42 @@
     {% endfor %}
     </div>
   </article>
+</section>
+
+<section class="panel">
+  <div class="panel-title"><h2>Season history</h2></div>
+  {% if career %}
+  {% set band = {"Steady": "low", "Variable": "moderate", "Volatile": "high"} %}
+  {% set durable = {"High": "low", "Medium": "moderate", "Low": "high"} %}
+  <dl class="metrics">
+    <div><dt>Seasons on record</dt><dd>{{ career.season_count }} <span class="muted">({{ career.qualifying_seasons }} qualifying)</span></dd></div>
+    <div><dt>Avg P/90</dt><dd>{{ "%.2f"|format(career.mean_p90) if career.mean_p90 is not none else "—" }}{% if career.p90_spread is not none %} <span class="muted">±{{ "%.2f"|format(career.p90_spread) }}</span>{% endif %}</dd></div>
+    <div><dt>Consistency</dt><dd>{% if career.consistency %}<span class="risk risk-{{ band[career.consistency] }}">{{ career.consistency }}</span>{% else %}Not enough seasons{% endif %}</dd></div>
+    <div><dt>Points per appearance SD</dt><dd>{{ "%.2f"|format(career.gw_sd) if career.gw_sd is not none else "—" }}</dd></div>
+    <div><dt>Blank / haul rate</dt><dd>{% if career.blank_rate is not none %}{{ "%.0f"|format(career.blank_rate) }}% / {{ "%.0f"|format(career.haul_rate) }}%{% else %}—{% endif %}</dd></div>
+    <div><dt>Durability</dt><dd>{% if career.durability %}<span class="risk risk-{{ durable[career.durability] }}">{{ career.durability }}</span> <span class="muted">{{ "%.0f"|format(career.minutes_share) }}% of minutes since {{ career.pooled_since }}</span>{% else %}—{% endif %}</dd></div>
+  </dl>
+  <div class="table-wrap"><table class="data-table season-history-table"><thead><tr>
+    {% for label, key in [("Season", "hist_season"), ("Club", "hist_club"), ("Pos", "pos"), ("Points", "hist_season_points"), ("Apps", "hist_apps"), ("Minutes", "minutes"), ("Starts", "start"), ("Start %", "hist_season_start_rate"), ("PPG", "hist_season_ppg"), ("P/90", "p90"), ("GW SD", "hist_season_gw_sd"), ("Blank %", "hist_blank_rate"), ("Haul %", "hist_haul_rate"), ("G", "hist_goals"), ("A", "hist_assists"), ("CS", "hist_clean_sheets"), ("Bonus", "hist_bonus"), ("Price", "hist_price_range")] %}<th>{{ info_header(label, key) }}</th>{% endfor %}
+  </tr></thead><tbody>
+  {% for line in career.seasons %}<tr>
+    <td>{{ line.season }}</td><td>{{ line.team_name or "—" }}</td><td>{{ line.position or "—" }}</td>
+    <td><strong>{{ line.points }}</strong></td><td>{{ line.appearances }}<span class="muted">/{{ line.fixtures }}</span></td><td>{{ line.minutes }}</td>
+    <td>{{ line.starts }}{% if line.starts_derived %}<span class="muted" title="Starts inferred from minutes">~</span>{% endif %}</td>
+    <td>{{ "%.0f%%"|format(line.start_rate) if line.start_rate is not none else "—" }}</td>
+    <td>{{ "%.2f"|format(line.ppg) if line.ppg is not none else "—" }}</td>
+    <td>{{ "%.2f"|format(line.p90) if line.p90 is not none else "—" }}</td>
+    <td>{{ "%.2f"|format(line.gw_sd) if line.gw_sd is not none else "—" }}</td>
+    <td>{{ "%.0f%%"|format(line.blank_rate) if line.blank_rate is not none else "—" }}</td>
+    <td>{{ "%.0f%%"|format(line.haul_rate) if line.haul_rate is not none else "—" }}</td>
+    <td>{{ line.goals }}</td><td>{{ line.assists }}</td><td>{{ line.clean_sheets }}</td><td>{{ line.bonus }}</td>
+    <td>{% if line.price_min is not none %}£{{ "%.1f"|format(line.price_min) }}{% if line.price_max != line.price_min %}–{{ "%.1f"|format(line.price_max) }}{% endif %}{% else %}—{% endif %}</td>
+  </tr>{% endfor %}
+  </tbody></table></div>
+  <p class="muted">Past seasons only; the current season is described above. P/90 is withheld below 270 minutes and GW SD below 10 appearances.{% if career.seasons|selectattr("starts_derived")|list %} Starts marked ~ are inferred from minutes: FPL did not record starts before 2022/23.{% endif %}</p>
+  {% else %}
+  <p class="muted">No past-season record. This player is new to the league, or past seasons have not been imported.</p>
+  {% endif %}
 </section>
 
 <article class="panel"><h2>Historical movement</h2><div class="metrics"><div><dt>1D value</dt><dd>{{ history[-1].value }}</dd></div><div><dt>Current rank</dt><dd>{{ current.value_rank or "Not ranked" }}</dd></div><div><dt>Forward percentile</dt><dd>{{ current.forward_percentile or "Not ranked" }}</dd></div><div><dt>Reference</dt><dd>{{ current.historical_reference_at or "No comparison snapshot" }}</dd></div></div></article>

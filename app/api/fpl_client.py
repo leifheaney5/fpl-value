@@ -12,6 +12,15 @@ from app.config import Settings
 logger = logging.getLogger(__name__)
 
 
+class FPLRequestError(RuntimeError):
+    """A failed public request with its safe HTTP status for fallback logic."""
+
+    def __init__(self, message: str, *, status_code: int | None, endpoint: str) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.endpoint = endpoint
+
+
 class FPLClient:
     def __init__(self, settings: Settings, http_client: httpx.Client | None = None) -> None:
         self.settings = settings
@@ -68,7 +77,11 @@ class FPLClient:
             (time.perf_counter() - started_at) * 1000,
             2,
         )
-        raise RuntimeError(f"FPL request failed after retries: {url}") from last_error
+        raise FPLRequestError(
+            f"FPL request failed after retries: {url}",
+            status_code=final_status,
+            endpoint=httpx.URL(url).path,
+        ) from last_error
 
     def bootstrap(self) -> dict[str, Any]:
         payload = self._get_json(self.settings.fpl_bootstrap_url, dataset="bootstrap")

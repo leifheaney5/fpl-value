@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
 from app.db.models import Fixture, Team
-from app.services.team_analysis import fixture_analysis, team_performance
+from app.services.team_analysis import _badge_url, fixture_analysis, team_performance
 
 
 def _session(tmp_path):
@@ -33,6 +33,13 @@ def _fixture_raw(home_difficulty, away_difficulty, **scores):
         "team_a_difficulty": away_difficulty,
         **scores,
     }
+
+
+def test_badge_urls_use_official_club_codes_with_an_unknown_fallback():
+    assert _badge_url(1, "Arsenal").endswith("/t3.png")
+    assert _badge_url(1, "Imported Arsenal", team_code=3).endswith("/t3.png")
+    assert _badge_url(99, "Imported Club").endswith("/t99.png")
+    assert _badge_url(99, "Imported Club", team_code=None).endswith("/t99.png")
 
 
 def test_fixture_analysis_uses_the_next_ten_correct_side_fdrs_and_badges(tmp_path):

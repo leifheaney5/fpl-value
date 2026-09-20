@@ -12,6 +12,40 @@ from app.db.models import Fixture, Team
 BADGE_URL = "https://resources.premierleague.com/premierleague/badges/t{team_id}.png"
 MAX_FPL_SCORE = 2_147_483_647
 
+# The FPL team id is not the same identifier used by the Premier League badge
+# CDN. Keep the mapping at this presentation boundary and retain an id-based
+# fallback for imported or otherwise unknown clubs.
+CLUB_BADGE_CODES = {
+    "arsenal": 3,
+    "aston villa": 7,
+    "bournemouth": 91,
+    "brentford": 94,
+    "brighton": 36,
+    "brighton and hove albion": 36,
+    "burnley": 90,
+    "chelsea": 8,
+    "crystal palace": 31,
+    "everton": 11,
+    "fulham": 54,
+    "leeds": 2,
+    "liverpool": 14,
+    "man city": 43,
+    "manchester city": 43,
+    "man utd": 1,
+    "manchester united": 1,
+    "newcastle": 4,
+    "newcastle united": 4,
+    "nott'm forest": 17,
+    "nottingham forest": 17,
+    "sunderland": 56,
+    "spurs": 6,
+    "tottenham hotspur": 6,
+    "west ham": 21,
+    "west ham united": 21,
+    "wolves": 39,
+    "wolverhampton wanderers": 39,
+}
+
 
 def _fixture_key(fixture: Fixture) -> tuple[bool, int, bool, datetime, int]:
     return (
@@ -23,8 +57,15 @@ def _fixture_key(fixture: Fixture) -> tuple[bool, int, bool, datetime, int]:
     )
 
 
-def _badge_url(team_id: int) -> str:
-    return BADGE_URL.format(team_id=team_id)
+def _badge_url(
+    team_id: int,
+    team_name: str | None = None,
+    team_code: int | None = None,
+) -> str:
+    badge_code = team_code or CLUB_BADGE_CODES.get(
+        (team_name or "").strip().casefold(), team_id
+    )
+    return BADGE_URL.format(team_id=badge_code)
 
 
 def _valid_difficulty(raw: dict[str, Any], key: str) -> int | None:
@@ -155,7 +196,11 @@ def fixture_analysis(db: Session, *, limit: int = 10) -> list[dict[str, Any]]:
                     "opponent_id": opponent_id,
                     "is_home": is_home,
                     "difficulty": difficulty,
-                    "badge_url": _badge_url(opponent_id),
+                    "badge_url": _badge_url(
+                        opponent_id,
+                        opponent.name if opponent else None,
+                        opponent.code if opponent else None,
+                    ),
                 }
             )
 
@@ -167,6 +212,7 @@ def fixture_analysis(db: Session, *, limit: int = 10) -> list[dict[str, Any]]:
         rows.append(
             {
                 "team": team,
+                "badge_url": _badge_url(team.id, team.name, team.code),
                 "fixtures": records,
                 "available": len(records),
                 "complete": bool(records) and len(numeric) == len(records),
@@ -231,7 +277,11 @@ def team_performance(db: Session, *, limit: int = 10) -> list[dict[str, Any]]:
                     "goals_against": goals_against,
                     "score": f"{goals_for}-{goals_against}",
                     "result": result,
-                    "badge_url": _badge_url(opponent_id),
+                    "badge_url": _badge_url(
+                        opponent_id,
+                        opponent.name if opponent else None,
+                        opponent.code if opponent else None,
+                    ),
                 }
             )
 
@@ -242,6 +292,7 @@ def team_performance(db: Session, *, limit: int = 10) -> list[dict[str, Any]]:
         rows.append(
             {
                 "team": team,
+                "badge_url": _badge_url(team.id, team.name, team.code),
                 "results": results,
                 "wins": wins,
                 "draws": draws,

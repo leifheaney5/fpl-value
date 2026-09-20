@@ -116,6 +116,37 @@ def test_players_carry_a_stable_cross_season_code(tmp_path):
     assert ("code",) in constraints
 
 
+def test_teams_carry_nullable_official_badge_code(tmp_path):
+    url = f"sqlite:///{tmp_path / 'team-code.db'}"
+    command.upgrade(_config(url), "head")
+    inspector = sa.inspect(sa.create_engine(url))
+    columns = {c["name"]: c for c in inspector.get_columns("teams")}
+    assert columns["code"]["nullable"] is True
+    indexes = {
+        index["name"] for index in inspector.get_indexes("teams")
+    }
+    assert "ix_teams_code" in indexes
+
+
+def test_migration_creates_protected_linked_team_snapshot_store(tmp_path):
+    url = f"sqlite:///{tmp_path / 'linked-team.db'}"
+    command.upgrade(_config(url), "head")
+    inspector = sa.inspect(sa.create_engine(url))
+    columns = {c["name"]: c for c in inspector.get_columns("linked_team_snapshots")}
+    assert {
+        "entry_id",
+        "payload",
+        "selected_event",
+        "fetched_at",
+        "expires_at",
+        "stale",
+        "last_error",
+        "updated_at",
+    }.issubset(columns)
+    assert columns["entry_id"]["nullable"] is False
+    assert columns["payload"]["nullable"] is False
+
+
 def test_migrated_schema_matches_the_models(tmp_path):
     """Migrations and models must agree.
 

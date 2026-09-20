@@ -25,6 +25,7 @@ Railway cron service. Each successful run stores immutable player snapshots.
 | `app/services/team_recommender.py` | The only squad optimiser and constraint engine. |
 | `app/services/archive_schema.py` | Column mapping for the FPL archive's four schema eras. Pure. |
 | `app/services/archive_import.py` | Archive ingestion, keyed on stable player code and fixture. |
+| `app/services/season_history.py` | Builds `player_season_aggregates` from `gameweek_history` and summarises past seasons for the spreadsheet and player pages. |
 | `app/models/features.py` | Point-in-time feature builder with an availability mask. Pure. |
 | `app/models/baselines.py` | Baselines a trained model must beat before shipping. |
 | `app/models/metrics.py` | Accuracy, rank correlation and calibration. |
@@ -46,6 +47,10 @@ archive, distinguished by `source`. It is keyed on
 `(player_code, season, gameweek, fixture_id)`: the code because element ids move
 between seasons, and the fixture because a double gameweek gives a player two
 fixtures in one gameweek.
+
+`player_season_aggregates` is derived: one row per `(player_code, season)`,
+rebuilt from `gameweek_history` by `build-season-aggregates` and `import-archive`.
+Pages read it instead of grouping ten seasons of history per request.
 
 Operations: `refresh_runs`, `schema_fields`, `schema_changes`, `import_records`,
 `audit_events`.

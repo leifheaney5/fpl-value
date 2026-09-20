@@ -25,8 +25,10 @@ measured differently from `docs/MODEL_EVALUATION.md`:
 
 | Candidate | Spearman | Seasons won |
 | --- | --- | --- |
-| **points_per_game** | **0.7368** | **8 / 9** |
-| minutes_mean *(control)* | 0.7229 | 1 / 9 |
+| **pick_score** *(added 2026-09-19)* | **0.7552** | **9 / 9** |
+| pick_score_per_million *(test of an idea)* | 0.7470 | 0 / 9 |
+| points_per_game | 0.7368 | 0 / 9 *(8 / 9 before Perfect Pick)* |
+| minutes_mean *(control)* | 0.7229 | 0 / 9 *(1 / 9 before)* |
 | reliable_value *(current default sort)* | 0.7223 | 0 / 9 |
 | points_per_million | 0.7213 | 0 / 9 |
 | points_per_game_shrunk | 0.7118 | 0 / 9 |
@@ -39,6 +41,10 @@ measured differently from `docs/MODEL_EVALUATION.md`:
 | points_per_90_min900 | 0.2715 | 0 / 9 |
 | points_per_90_min270 | 0.2258 | 0 / 9 |
 | points_per_90 | 0.0270 | 0 / 9 |
+
+The sections below were written before Perfect Pick existed and describe the
+field without it. They still hold among single columns; see
+[Perfect Pick](#perfect-pick-the-first-composite-through-the-gate) for what changed.
 
 ## What this settles
 
@@ -117,6 +123,7 @@ is already settled as the worst ordering.
 | Candidate | Mean squad points | Builds won | Seasons won |
 | --- | --- | --- | --- |
 | composite_with_form | **253.3** | 9 | **3 / 6** |
+| pick_score *(added 2026-09-19; build wins counted in the 12-candidate run, where composite_with_form also has 5)* | 251.6 | 5 | 1 / 6 |
 | composite_quality_security | 249.7 | 7 | 1 / 6 |
 | minutes_weighted_points | 247.4 | 1 | 0 |
 | points_per_game | 247.3 | 9 | 0 |
@@ -186,6 +193,62 @@ keepers differently.
 
 Otherwise the pooled conclusion holds within each cohort: points-per-game is
 best or statistically tied for best in DEF, MID and FWD.
+
+## Perfect Pick: the first composite through the gate
+
+```
+quality  = 0.85 * points_per_game + 0.15 * form_last3
+security = 0.25 + 0.75 * min(minutes_last3 / 90, 1)
+pick     = quality * security
+```
+
+The candidate calls the deployed `pick_score` function, as `reliable_value`
+does, so the measured thing is the shipped thing. The deployed metric also
+multiplies by `availability_factor`, which the archive cannot supply.
+
+| Gate rule | Result |
+| --- | --- |
+| 1. Beat points_per_game (0.7368) | **0.7552** |
+| 2. Beat the minutes control (0.7229) | **0.7552** |
+| 3. Win a majority of nine seasons | **9 / 9** |
+| 4. Beat reliable_value at squad level *and* win a majority of seasons | 251.6 against 244.1, but **1 / 6 seasons — not cleared** |
+
+It ships as a column. It does **not** become the default sort: rule 4 exists
+for exactly this shape, a better mean with no season majority. With Perfect Pick
+in the field, six different candidates each won one squad season; nothing
+dominates there.
+
+By position it leads in DEF (0.707 against 0.686), MID (0.783 against 0.766) and
+FWD (0.782 against 0.767). Defenders, the hardest cohort, gain most. Goalkeepers
+remain the exception: `form_last3` at 0.801 against 0.794.
+
+### What was tried on the way, and lost
+
+| Idea | Spearman | Verdict |
+| --- | --- | --- |
+| Anchor PPG to the previous season's PPG, k = 3 / 6 / 12 matches | 0.7208 / 0.7086 / 0.6875 | Worse the more weight it gets. Last season's regulars who have lost their place are propped up. |
+| Scale fully by recent minutes (floor 0) | 0.7345 | Worse than plain PPG. One missed match is not grounds to write a player off. |
+| Divide by price (`pick_score_per_million`) | 0.7470, and 241.2 squad points | Worse on **both** evaluations, including the budget-constrained one. |
+| Floor 0.25–0.50 with form weight 0.00–0.30 | 0.7494–0.7553 | All six beat points per game in every one of the nine seasons. |
+
+**Past seasons do not help rank who to own next.** This is the same data that
+makes the past-season consistency columns useful, and it is worth keeping the
+two uses apart: a record describes a player, it does not forecast his next five
+gameweeks better than this season already does.
+
+### How the weights were chosen
+
+A nine-point grid (three floors, three form weights), declared before it was
+run. The setting was picked on the 2017/18–2021/22 folds and the 2022/23–2025/26
+folds were held back as confirmation; both halves order the six gate-clearing settings identically.
+Form 0.15 / floor 0.25 tied for best on the selection folds (0.7296 against
+0.7299 for form 0.30) and won the most seasons outright, so the lower form
+weight was taken as the less noisy of two equals.
+
+The five best settings sit within 0.002 of each other. The gain comes from the
+structure — quality, a partial minutes term, a little form — not from the
+weights, and they are not worth re-tuning. The 9 / 9 season count includes the
+five folds the weights were chosen on; the four held-back folds were all won too.
 
 ## The gate
 

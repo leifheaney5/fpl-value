@@ -21,6 +21,7 @@ PROTECTION_MAP: tuple[tuple[str, str], ...] = (
     ("/logout", "PUBLIC"),
     ("/static", "PUBLIC"),
     ("/my-team", "PERSONAL"),
+    ("/diagnostics", "PERSONAL"),
     ("/admin", "MUTATION"),
 )
 

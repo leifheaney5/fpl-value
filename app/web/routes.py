@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import io
+from hashlib import sha256
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import (
@@ -24,9 +26,10 @@ from app.analytics.contracts import MetricValue, describe
 from app.analytics.metrics import sample_confidence
 from app.api.fpl_client import FPLClient
 from app.config import Settings, get_settings
-from app.db.models import Player
+from app.db.models import LinkedTeamSnapshot, Player
 from app.db.session import get_db
 from app.services.captaincy import captain_candidates
+from app.services.data_status import data_status
 from app.services.exports import csv_bytes, xlsx_bytes
 from app.services.queries import (
     dashboard_data,
@@ -39,11 +42,13 @@ from app.services.queries import (
     recent_schema_changes,
 )
 from app.services.refresh import refresh_data
+from app.services.season_history import career_summaries, stored_seasons
 from app.services.season_state import Readiness
 from app.services.my_team import clear_remote_team_cache, linked_team_data, transfer_plan
 from app.services.team_recommender import (
     NotReadyError,
     STRATEGIES,
+    compare_recommendations,
     recommend_team_cached,
 )
 from app.services.player_intelligence import build_player_intelligence
@@ -58,10 +63,102 @@ from app.web.auth import (
     valid_credentials,
     valid_csrf,
 )
+from app.web.column_help import column_help
 
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+templates.env.globals["asset_versions"] = {
+    name: sha256((Path(__file__).parent.parent / "static" / name).read_bytes()).hexdigest()[:12]
+    for name in ("app.css", "app.js")
+}
+
+
+_COMPARE_METRICS = (
+    ("Price", "price", True),
+    ("Total points", "total_points", False),
+    ("Raw value", "value", False),
+    ("Reliable value", "reliable_value", False),
+    ("Forward value", "forward_value", False),
+    ("Projected next fixtures", "projected_points_5", False),
+    ("Rotation risk", "rotation_risk", True),
+    ("PPG", "points_per_game", False),
+    ("Points / 90", "points_per_90", False),
+    ("Points / start", "points_per_start", False),
+    ("Minutes", "minutes", False),
+    ("Start rate", "start_rate", False),
+    ("Expected minutes", "expected_minutes", False),
+    ("Ownership", "ownership", False),
+    ("Average fixture difficulty", "average_fixture_difficulty", True),
+)
+_COMPARE_RAW_METRICS = {
+    "price",
+    "total_points",
+    "rotation_risk",
+    "points_per_game",
+    "minutes",
+    "ownership",
+}
+
+
+def comparison_scale(
+    values: list[float | int | None], *, lower_is_better: bool = False
+) -> list[str]:
+    """Assign a five-step red-to-green scale across comparable values."""
+    available = [float(value) for value in values if value is not None]
+    if len(available) < 2 or min(available) == max(available):
+        return ["compare-scale-neutral"] * len(values)
+
+    ordered = sorted(set(available), reverse=lower_is_better)
+    last_index = len(ordered) - 1
+    ranks = {
+        value: round(index * 4 / last_index)
+        for index, value in enumerate(ordered)
+    }
+    return [
+        "compare-scale-neutral" if value is None
+        else f"compare-scale-{ranks[float(value)]}"
+        for value in values
+    ]
+
+
+def _comparison_value(snapshot: Any, name: str) -> float | int | None:
+    if name in _COMPARE_RAW_METRICS:
+        return getattr(snapshot, name, None)
+    metric = _metric(snapshot, name)
+    return metric.value if metric.is_value else None
+
+
+def _comparison_cell(snapshot: Any, name: str) -> str:
+    value = _comparison_value(snapshot, name)
+    if value is None:
+        return "—"
+    if name == "price":
+        return f"£{float(value):.1f}"
+    if name == "rotation_risk":
+        return f"{float(value):.1f}"
+    if name == "points_per_game":
+        return f"{float(value):.2f}"
+    if name == "ownership":
+        return f"{float(value):.1f}%"
+    if name in {"total_points", "minutes"}:
+        return str(value)
+    rendered = _metric_cell(snapshot, name)
+    return f"{rendered}%" if name == "start_rate" else rendered
+
+
+def _comparison_metrics(selected: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    metrics = []
+    for label, name, lower_is_better in _COMPARE_METRICS:
+        values = [_comparison_value(row["snapshot"], name) for row in selected]
+        metrics.append(
+            {
+                "label": label,
+                "name": name,
+                "classes": comparison_scale(values, lower_is_better=lower_is_better),
+            }
+        )
+    return metrics
 
 
 def _metric(snapshot: Any, name: str) -> MetricValue:
@@ -114,6 +211,8 @@ templates.env.globals["metric"] = _metric
 templates.env.globals["metric_cell"] = _metric_cell
 templates.env.globals["sample_mark"] = _sample_mark
 templates.env.globals["sample_title"] = _sample_title
+templates.env.globals["comparison_cell"] = _comparison_cell
+templates.env.globals["column_help"] = column_help
 
 
 def _optional_number(value: str | None, parser):
@@ -214,14 +313,17 @@ def dashboard(
     settings: Settings = Depends(get_settings),
 ):
     data = dashboard_data(db, settings.current_season)
+    data["data_status"] = data_status(db, settings.current_season)
     # Privacy by exclusion: personal data is never placed in a context an
     # anonymous visitor can receive, rather than being masked at render time.
     data["authenticated"] = can_access_personal(request, settings)
-    data["my_team"] = (
-        linked_team_data(db, FPLClient(settings), settings, rows=data["rows"])
-        if data["authenticated"]
-        else None
-    )
+    if data["authenticated"]:
+        with FPLClient(settings) as client:
+            data["my_team"] = linked_team_data(
+                db, client, settings, rows=data["rows"]
+            )
+    else:
+        data["my_team"] = None
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
@@ -257,6 +359,7 @@ def spreadsheet(
     max_ownership: str | None = None,
     status: str | None = None,
     sort: str = "reliable_value",
+    history: str | None = None,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
@@ -315,7 +418,29 @@ def spreadsheet(
             getattr(row["snapshot"], sort_key, None) is not None for row in rows
         )
 
+    # Past seasons are opt-in: the lookup is skipped entirely unless asked for.
+    history_on = history == "1"
+    history_seasons: list[str] = []
+    if history_on:
+        history_seasons = stored_seasons(db, exclude_season=settings.current_season)
+        careers = career_summaries(
+            db,
+            [row["player"].code for row in rows],
+            exclude_season=settings.current_season,
+            sample_minutes=settings.reliability_sample_minutes,
+        )
+        for row in rows:
+            row["career"] = careers.get(row["player"].code)
+    toggle = (
+        request.url.remove_query_params("history")
+        if history_on
+        else request.url.include_query_params(history=1)
+    )
+
     return templates.TemplateResponse(request=request, name="spreadsheet.html", context={
+        "history_on": history_on, "history_seasons": history_seasons,
+        "history_toggle_url": toggle.path + (f"?{toggle.query}" if toggle.query else ""),
+        "sample_minutes": settings.reliability_sample_minutes,
         "rows": rows, "view": view, "view_title": title, "view_description": description,
         "carry_over": carry_over, "previous_season": _previous_season(settings.current_season),
         "sortable": sortable, "sort_key_label": sort_key.replace("_", " "),
@@ -344,6 +469,12 @@ def player_detail(
             "player": player,
             "current": history[-1],
             "history": history,
+            "career": career_summaries(
+                db,
+                [player.code],
+                exclude_season=settings.current_season,
+                sample_minutes=settings.reliability_sample_minutes,
+            ).get(player.code),
             "comparison_options": latest_player_options(
                 db,
                 settings.current_season,
@@ -554,11 +685,22 @@ def diagnostics(request: Request, db: Session = Depends(get_db), settings: Setti
 
 
 @router.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request):
+def settings_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    snapshot = None
+    if can_access_personal(request, settings) and settings.fpl_entry_id:
+        snapshot = db.scalar(
+            select(LinkedTeamSnapshot).where(
+                LinkedTeamSnapshot.entry_id == settings.fpl_entry_id
+            )
+        )
     return templates.TemplateResponse(
         request=request,
         name="settings.html",
-        context={},
+        context={"team_snapshot": snapshot},
     )
 
 
@@ -573,10 +715,12 @@ def my_team_page(
     # future change to PROTECTION_MAP cannot silently expose it.
     if not can_access_personal(request, settings):
         return RedirectResponse("/login?next=/my-team", status_code=303)
+    with FPLClient(settings) as client:
+        team = linked_team_data(db, client, settings)
     return templates.TemplateResponse(
         request=request,
         name="my_team.html",
-        context={"my_team": linked_team_data(db, FPLClient(settings), settings)},
+        context={"my_team": team},
     )
 
 
@@ -594,7 +738,7 @@ def refresh_my_team(
         raise HTTPException(403, "Invalid CSRF token")
     clear_remote_team_cache(entry_id=settings.fpl_entry_id)
     audit.record(db, "my_team.refresh", request)
-    return RedirectResponse("/my-team?refreshed=1", status_code=303)
+    return RedirectResponse("/my-team", status_code=303)
 
 
 @router.get("/recommendation", response_class=HTMLResponse)
@@ -612,6 +756,7 @@ def recommendation_page(
     checks = None
     activates_when = None
     rows = latest_rows(db, settings.current_season)
+    comparisons = compare_recommendations(rows, budget_value)
     try:
         recommendation = recommend_team_cached(rows, budget_value, strategy)
     except NotReadyError as exc:
@@ -620,12 +765,12 @@ def recommendation_page(
         activates_when = exc.activates_when
     except ValueError as exc:
         error = str(exc)
-    team = (
-        linked_team_data(db, FPLClient(settings), settings, rows=rows)
-        if can_access_personal(request, settings)
-        else None
-    )
-    return templates.TemplateResponse(request=request, name="recommendation.html", context={"recommendation": recommendation, "error": error, "checks": checks, "activates_when": activates_when, "budget": budget_value, "strategy": strategy, "strategies": STRATEGIES, "my_team": team, "transfer_plan": transfer_plan(team, recommendation) if team and recommendation else None})
+    if can_access_personal(request, settings):
+        with FPLClient(settings) as client:
+            team = linked_team_data(db, client, settings, rows=rows)
+    else:
+        team = None
+    return templates.TemplateResponse(request=request, name="recommendation.html", context={"recommendation": recommendation, "error": error, "checks": checks, "activates_when": activates_when, "budget": budget_value, "strategy": strategy, "strategies": STRATEGIES, "comparisons": comparisons, "my_team": team, "transfer_plan": transfer_plan(team, recommendation) if team and recommendation else None})
 
 
 @router.get("/movers", response_class=HTMLResponse)
@@ -673,6 +818,7 @@ def compare(
             "all_rows": all_rows,
             "selected": selected,
             "selected_ids": selected_ids,
+            "comparison_metrics": _comparison_metrics(selected),
         },
     )
 
@@ -692,7 +838,7 @@ def schema_page(
 @router.get("/exports/current.csv")
 def export_csv(db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
     return Response(
-        csv_bytes(db, settings.current_season),
+        csv_bytes(db, settings.current_season, settings.reliability_sample_minutes),
         media_type="text/csv",
         headers={
             "Content-Disposition": (
@@ -705,7 +851,7 @@ def export_csv(db: Session = Depends(get_db), settings: Settings = Depends(get_s
 @router.get("/exports/current.xlsx")
 def export_xlsx(db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
     return Response(
-        xlsx_bytes(db, settings.current_season),
+        xlsx_bytes(db, settings.current_season, settings.reliability_sample_minutes),
         media_type=(
             "application/vnd.openxmlformats-officedocument."
             "spreadsheetml.sheet"
@@ -729,6 +875,7 @@ def manual_refresh(
         audit.record(db, "admin.refresh.denied", request)
         raise HTTPException(403, "Invalid CSRF token")
     audit.record(db, "admin.refresh", request)
-    refresh_data(db, settings, FPLClient(settings))
+    with FPLClient(settings) as client:
+        refresh_data(db, settings, client)
     clear_remote_team_cache(entry_id=settings.fpl_entry_id)
     return RedirectResponse("/", status_code=303)

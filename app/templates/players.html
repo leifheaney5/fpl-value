@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import info_header %}
 {% block title %}Players · FPL Value Studio{% endblock %}
 {% block content %}
 <div class="page-heading">
@@ -52,7 +53,7 @@
 <table class="data-table sortable-table">
   <thead>
     <tr>
-      {% for label in ["Player", "Pos", "Price", "Points", "Value", "Reliable", "Forward", "Risk", "1D Δ Value", "1D Δ Price", "PPG", "P/90", "Start rate", "Ownership"] %}<th><button type="button" class="sort-button" aria-sort="none">{{ label }} <span aria-hidden="true">↕</span></button></th>{% endfor %}
+      {% for label, key in [("Player", "player"), ("Pos", "pos"), ("Price", "price"), ("Points", "points"), ("Value", "value"), ("Reliable", "reliable"), ("Forward", "forward"), ("Risk", "risk"), ("1D Δ Value", "delta_value"), ("1D Δ Price", "delta_price"), ("PPG", "ppg"), ("P/90", "p90"), ("Start rate", "start_rate"), ("Ownership", "ownership")] %}<th><button type="button" class="sort-button" aria-sort="none">{{ info_header(label, key, false) }} <span aria-hidden="true">↕</span></button></th>{% endfor %}
     </tr>
   </thead>
   <tbody>

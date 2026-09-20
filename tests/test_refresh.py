@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.config import Settings
 from app.db.base import Base
-from app.db.models import Gameweek, Player, PlayerSnapshot, RefreshRun, SchemaChange
+from app.db.models import Gameweek, Player, PlayerSnapshot, RefreshRun, SchemaChange, Team
 from app.services.refresh import _update_schema, refresh_data, utcnow
 
 from fakes import CarryOverPreseasonClient, FakeClient, PreseasonClient
@@ -91,6 +91,26 @@ def test_refresh_stores_the_stable_player_code(tmp_path):
         refresh_data(db, settings, CodedClient())
         player = db.scalar(select(Player))
         assert player.code == 154561
+
+
+def test_refresh_persists_official_team_code(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'team-code.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(engine, expire_on_commit=False)
+    settings = Settings(database_url=f"sqlite:///{tmp_path / 'team-code.db'}")
+
+    class CodedClient(FakeClient):
+        def bootstrap(self):
+            payload = super().bootstrap()
+            payload["teams"][0]["code"] = 3
+            return payload
+
+    with Session() as db:
+        refresh_data(db, settings, CodedClient())
+        assert db.get(Team, 1).code == 3
 
 
 def test_carried_over_minutes_do_not_become_current_season_rates(tmp_path):

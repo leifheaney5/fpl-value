@@ -22,6 +22,10 @@ have no value and say so, rather than displaying `0.00`. See
 and [docs/SEASON_STATE.md](docs/SEASON_STATE.md) for why a feature may decline
 to produce a result.
 
+Hover, focus, or tap a table heading's information marker to read its meaning.
+Help also covers Compare's metric rows. Press Escape or tap outside to dismiss
+the popup; explanations stay within the screen when tables scroll horizontally.
+
 ## What is included
 
 - FastAPI web application
@@ -54,6 +58,9 @@ to produce a result.
 - Ten seasons of historical per-gameweek data for model training
 - Point-in-time feature builder with a proven no-leakage guarantee
 - Next-gameweek captaincy ranking that counts double gameweeks and stays silent without expected minutes
+- Fixture Analysis page with the next 10 fixtures, official FPL difficulty ratings, club badges, and an easy-to-tough color gradient
+- Performance page with each team's last 10 validated results, form record, points per game, goals, and result strip
+- My Team page using the newest available public entry snapshot, with a manual refresh action and an explicit stale-snapshot warning when FPL is unavailable
 - Walk-forward backtesting of projections against six baselines
 - Walk-forward evaluation of the sheet's sort orders, individually and by the squad they build under a budget
 - Carry-over labelling: last season's counting stats are shown, named as last season's, until a match is played
@@ -142,7 +149,40 @@ Run tests:
 pytest
 ```
 
+The complete suite includes offline model-training tests. Install the existing
+training extras locally to run those too:
+
+```bash
+pip install -e ".[dev,train]"
+python -m pytest
+```
+
+The training extras are not required in the production web image.
+
+The My Team page is refreshed automatically when its 60-second snapshot expires
+and can also be refreshed manually from the page. Manual refresh advances the
+cache generation so the next request revalidates against the newest available
+entry gameweek. If the public FPL feed is temporarily unavailable, the last
+valid snapshot is retained and clearly labelled as stale rather than replaced
+with an older completed gameweek.
+
 ## Deploy to Railway
+
+The current release target is the existing `fpl-value-studio` project, not a
+new Railway project:
+
+```text
+Project:     e54df4c5-d15f-48cc-a164-2fedafa9c7cc
+Environment: ca46ed57-89c4-4861-9970-2b85770b285d (production)
+Web service: c69cfd06-a450-4620-9e8d-af62130028d1
+Domain:      https://fpl-value-studio-production.up.railway.app
+```
+
+Use [the production checklist](docs/PRODUCTION_CHECKLIST.md) as the release
+contract. A Railway container can start successfully with an empty or local
+database, so the release is incomplete until PostgreSQL, the scheduled refresh
+service, the required variables, a completed refresh, and public smoke checks
+are recorded. Do not push or deploy without explicit release authorization.
 
 ### 1. Push the project to GitHub
 
@@ -250,6 +290,15 @@ archive, covering 2016-17 to 2025-26:
 ```bash
 python -m app.cli import-archive                 # all seasons
 python -m app.cli import-archive --season 2024-25
+```
+
+The import also builds `player_season_aggregates`, which the spreadsheet's
+"Show past seasons" toggle and the player pages read. To rebuild it without
+re-importing:
+
+```bash
+python -m app.cli build-season-aggregates                  # all stored seasons
+python -m app.cli build-season-aggregates --season 2025/26
 ```
 
 Evaluate the baselines with walk-forward backtesting:

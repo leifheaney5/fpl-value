@@ -549,9 +549,37 @@ def recommend_team(rows: list[dict[str, Any]], budget: float = 100.0, strategy: 
 
 def recommend_team_cached(rows: list[dict[str, Any]], budget: float = 100.0, strategy: str = "best_team") -> dict[str, Any]:
     """Cache recommendations until the latest database snapshot changes."""
-    latest = max((getattr(row["snapshot"], "captured_at", None) for row in rows), default=None)
-    snapshot_key = latest.isoformat() if latest is not None else len(rows)
-    key = (snapshot_key, round(budget, 1), strategy)
+    captured = [
+        getattr(row["snapshot"], "captured_at", None)
+        for row in rows
+        if getattr(row["snapshot"], "captured_at", None) is not None
+    ]
+    latest = max(captured) if captured else None
+    latest_key = (
+        latest.isoformat() if hasattr(latest, "isoformat") else str(latest)
+        if latest is not None
+        else len(rows)
+    )
+    # Snapshot timestamps are normally sufficient for database rows, but a
+    # caller may compare two in-memory pools with the same capture time. Keep
+    # the cache from returning a squad built from a different input pool.
+    pool_key = tuple(
+        sorted(
+            (
+                row["player"].id,
+                getattr(row["snapshot"], "price", None),
+                getattr(row["snapshot"], "projected_points_5", None),
+                getattr(row["snapshot"], "total_points", None),
+                getattr(row["snapshot"], "reliable_value", None),
+                getattr(row["snapshot"], "forward_value", None),
+                getattr(row["snapshot"], "availability_factor", None),
+                getattr(row["snapshot"], "rotation_risk", None),
+                getattr(row["snapshot"], "ownership", None),
+            )
+            for row in rows
+        )
+    )
+    key = (latest_key, pool_key, round(budget, 1), strategy)
     with _RECOMMENDATION_CACHE_LOCK:
         cached = _RECOMMENDATION_CACHE.get(key)
     if cached is not None:
@@ -563,3 +591,80 @@ def recommend_team_cached(rows: list[dict[str, Any]], budget: float = 100.0, str
         while len(_RECOMMENDATION_CACHE) > _MAX_CACHE_ENTRIES:
             _RECOMMENDATION_CACHE.pop(next(iter(_RECOMMENDATION_CACHE)))
     return result
+
+
+def compare_recommendations(
+    rows: list[dict[str, Any]],
+    budget: float,
+    strategies: dict[str, dict[str, Any]] = STRATEGIES,
+) -> list[dict[str, Any]]:
+    """Adapt the existing optimizer into an honest strategy comparison table.
+
+    The optimizer remains the single source of squad rules. This function only
+    projects its result into stable, template-friendly fields and preserves the
+    caller's strategy order.
+    """
+    comparisons: list[dict[str, Any]] = []
+    previous_starting: set[int] | None = None
+    for strategy, definition in strategies.items():
+        base = {
+            "strategy": strategy,
+            "label": definition.get("label", strategy),
+            "state": "not_ready",
+            "spent": None,
+            "remaining": None,
+            "formation": None,
+            "projected_total": None,
+            "starting_ids": [],
+            "bench_ids": [],
+            "captain_id": None,
+            "changed_from_previous": False,
+        }
+        try:
+            recommendation = recommend_team_cached(rows, budget, strategy)
+        except NotReadyError as exc:
+            base.update(
+                {
+                    "checks": exc.checks,
+                    "activates_when": exc.activates_when,
+                }
+            )
+            comparisons.append(base)
+            previous_starting = None
+            continue
+        except ValueError as exc:
+            base.update({"state": "error", "error": str(exc)})
+            comparisons.append(base)
+            previous_starting = None
+            continue
+
+        starting = recommendation["starting"]
+        bench = recommendation["bench"]
+        starting_ids = [item["row"]["player"].id for item in starting]
+        bench_ids = [item["row"]["player"].id for item in bench]
+        captain = next(
+            (item["row"]["player"].id for item in starting if item.get("captain")),
+            None,
+        )
+        changed = (
+            previous_starting is not None
+            and set(starting_ids) != previous_starting
+        )
+        base.update(
+            {
+                "state": "ready",
+                "spent": recommendation["spent"],
+                "remaining": recommendation["remaining"],
+                "formation": recommendation["formation"],
+                "projected_total": round(
+                    sum(_output_or_zero(item["row"]) for item in starting), 2
+                ),
+                "starting_ids": starting_ids,
+                "bench_ids": bench_ids,
+                "captain_id": captain,
+                "changed_from_previous": changed,
+            }
+        )
+        comparisons.append(base)
+        previous_starting = set(starting_ids)
+    return comparisons

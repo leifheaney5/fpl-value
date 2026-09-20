@@ -1,4 +1,88 @@
 document.addEventListener("DOMContentLoaded", () => {
+  // Mount help outside scrollable tables so narrow columns cannot clip it.
+  let activeHelp = null;
+  let closeTimer;
+  const closeHelp = () => {
+    clearTimeout(closeTimer);
+    if (!activeHelp) return;
+    activeHelp.tip.classList.remove("is-open");
+    activeHelp = null;
+  };
+  const positionHelp = () => {
+    if (!activeHelp) return;
+    const { trigger, tip } = activeHelp;
+    const anchor = trigger.getBoundingClientRect();
+    const box = tip.getBoundingClientRect();
+    const padding = 8;
+    const left = Math.max(padding, Math.min(anchor.left, window.innerWidth - box.width - padding));
+    const below = anchor.bottom + padding;
+    const top = below + box.height <= window.innerHeight - padding
+      ? below : Math.max(padding, anchor.top - box.height - padding);
+    tip.style.left = `${left}px`;
+    tip.style.top = `${top}px`;
+  };
+  document.querySelectorAll(".column-heading").forEach((heading, index) => {
+    const tip = heading.querySelector(".column-tooltip");
+    if (!tip) return;
+    const trigger = heading.closest(".sort-button") || heading;
+    tip.id = `column-help-${index}`;
+    tip.classList.add("column-tooltip--floating");
+    document.body.appendChild(tip);
+    heading.removeAttribute("title");
+    heading.removeAttribute("aria-label");
+    trigger.setAttribute("aria-describedby", tip.id);
+    const showHelp = () => {
+      clearTimeout(closeTimer);
+      if (activeHelp?.tip !== tip) closeHelp();
+      activeHelp = { trigger, tip };
+      tip.classList.add("is-open");
+      positionHelp();
+    };
+    const scheduleClose = () => {
+      clearTimeout(closeTimer);
+      closeTimer = setTimeout(() => {
+        if (activeHelp?.tip === tip && document.activeElement !== trigger) closeHelp();
+      }, 150);
+    };
+    trigger.addEventListener("pointerenter", (event) => {
+      if (event.pointerType !== "touch") showHelp();
+    });
+    trigger.addEventListener("pointerleave", scheduleClose);
+    trigger.addEventListener("focus", showHelp);
+    trigger.addEventListener("blur", () => {
+      if (activeHelp?.tip === tip) closeHelp();
+    });
+    trigger.addEventListener("click", showHelp);
+    trigger.addEventListener("keydown", (event) => {
+      if (trigger === heading && ["Enter", " "].includes(event.key)) {
+        event.preventDefault();
+        showHelp();
+      }
+    });
+    tip.addEventListener("pointerenter", () => clearTimeout(closeTimer));
+    tip.addEventListener("pointerleave", scheduleClose);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeHelp();
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (activeHelp && !activeHelp.trigger.contains(event.target) && !activeHelp.tip.contains(event.target)) closeHelp();
+  });
+  document.addEventListener("scroll", () => {
+    if (!activeHelp) return;
+    const anchor = activeHelp.trigger.getBoundingClientRect();
+    const container = activeHelp.trigger.closest(".table-wrap")?.getBoundingClientRect();
+    if (anchor.bottom <= 0 || anchor.top >= window.innerHeight ||
+        anchor.right <= 0 || anchor.left >= window.innerWidth ||
+        (container && (anchor.right <= container.left || anchor.left >= container.right ||
+          anchor.bottom <= container.top || anchor.top >= container.bottom))) {
+      closeHelp();
+    } else {
+      positionHelp();
+    }
+  }, true);
+  window.addEventListener("resize", closeHelp);
+
   document.querySelectorAll("table.sortable-table").forEach((table) => {
     const body = table.tBodies[0];
     if (!body) return;

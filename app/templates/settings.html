@@ -6,4 +6,11 @@
   <a class="panel settings-card" href="/diagnostics"><span class="settings-card-icon">⌁</span><h2>Diagnostics</h2><p>Review data sufficiency, historical coverage, and model readiness.</p><span class="settings-card-link">Open diagnostics →</span></a>
   <a class="panel settings-card" href="/schema"><span class="settings-card-icon">◇</span><h2>Schema history</h2><p>See added and removed fields detected in the public FPL API.</p><span class="settings-card-link">Open schema history →</span></a>
 </section>
+{% if team_snapshot %}
+<section class="panel">
+  <h2>Linked team snapshot</h2>
+  <p class="muted">Entry {{ team_snapshot.entry_id }} · selected gameweek {{ team_snapshot.selected_event or "not available" }} · last snapshot {{ team_snapshot.fetched_at }}{% if team_snapshot.stale %} · stale{% endif %}</p>
+  <a class="button secondary" href="/my-team">Open My Team</a>
+</section>
+{% endif %}
 {% endblock %}

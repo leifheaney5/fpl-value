@@ -1,3 +1,4 @@
+import pytest
 from app.analytics.metrics import (
     cumulative_tier,
     expected_minutes,
@@ -64,3 +65,24 @@ def test_metrics_return_a_real_zero_when_the_measurement_is_genuine():
     # That is a measured zero, not an absent measurement.
     assert reliability_factor(0, 0, 3) == 0.0
     assert expected_minutes(0, 0, 3, 1.0) == 0.0
+
+
+def test_pick_score_blends_form_and_scales_by_recent_minutes():
+    from app.analytics.metrics import pick_score
+
+    # Nailed on: 0.85 * 6 + 0.15 * 8 = 6.3, with no minutes penalty.
+    assert pick_score(6.0, 8.0, 90.0) == pytest.approx(6.3)
+    # Same player, absent for the last three: the floor keeps a quarter.
+    assert pick_score(6.0, 8.0, 0.0) == pytest.approx(6.3 * 0.25)
+    # Half the available minutes sits halfway between the floor and full.
+    assert pick_score(6.0, 8.0, 45.0) == pytest.approx(6.3 * 0.625)
+    # More than ninety minutes a match (a double gameweek) is not a bonus.
+    assert pick_score(6.0, 8.0, 140.0) == pytest.approx(6.3)
+
+
+def test_pick_score_is_null_without_a_points_rate_and_degrades_without_a_window():
+    from app.analytics.metrics import pick_score
+
+    assert pick_score(None, 8.0, 90.0) is None
+    assert pick_score(6.0, None, None) == pytest.approx(6.0)
+    assert pick_score(6.0, None, 90.0) == pytest.approx(6.0)

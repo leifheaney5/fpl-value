@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import info_header %}
 {% block title %}{{ title }} · FPL Value Studio{% endblock %}
 {% block content %}
 <div class="page-heading">
@@ -7,7 +8,7 @@
 <div class="table-wrap">
 <table class="data-table">
   <thead>
-    <tr><th>Player</th><th>Team</th><th>Pos</th><th>Price</th><th>Reliable</th><th>Forward</th><th>Projected</th><th>Rotation</th><th>Expected min</th><th>Fixtures</th></tr>
+    <tr><th>{{ info_header("Player", "player") }}</th><th>{{ info_header("Team", "team") }}</th><th>{{ info_header("Pos", "pos") }}</th><th>{{ info_header("Price", "price") }}</th><th>{{ info_header("Reliable", "reliable") }}</th><th>{{ info_header("Forward", "forward") }}</th><th>{{ info_header("Projected", "projected") }}</th><th>{{ info_header("Rotation", "rotation") }}</th><th>{{ info_header("Expected min", "expected_min") }}</th><th>{{ info_header("Fixtures", "fixtures") }}</th></tr>
   </thead>
   <tbody>
   {% for row in rows %}

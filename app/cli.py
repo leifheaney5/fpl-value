@@ -33,8 +33,8 @@ def command_refresh(scheduled: bool, force: bool) -> int:
             )
             return 0
 
-    with SessionLocal() as db:
-        run = refresh_data(db, settings, FPLClient(settings))
+    with SessionLocal() as db, FPLClient(settings) as client:
+        run = refresh_data(db, settings, client)
         print(
             f"Refresh {run.status}: {run.player_count} players, "
             f"{run.schema_change_count} schema changes."
@@ -59,9 +59,11 @@ def command_import_archive(seasons: list[str] | None) -> int:
     reader = HttpArchiveReader()
     targets = seasons or list(SEASONS)
     totals = {"rows_read": 0, "rows_written": 0, "rows_rejected": 0, "derived_starts": 0}
+    imported = []
     with SessionLocal() as db:
         for directory in targets:
             result = import_archive_season(db, directory, reader)
+            imported.append(str(result["season"]))
             for key in totals:
                 totals[key] += int(result[key])
             print(
@@ -70,6 +72,19 @@ def command_import_archive(seasons: list[str] | None) -> int:
                 f"rejected={result['rows_rejected']:>6} derived_starts={result['derived_starts']:>6}"
             )
     print("total " + "  ".join(f"{key}={value}" for key, value in totals.items()))
+    # The spreadsheet and player pages read aggregates, not the raw history.
+    return command_build_season_aggregates(imported)
+
+
+def command_build_season_aggregates(seasons: list[str] | None) -> int:
+    from app.services.season_history import rebuild_season_aggregates
+
+    with SessionLocal() as db:
+        result = rebuild_season_aggregates(db, seasons)
+    print(
+        f"Season aggregates: {result['rows']} player-seasons "
+        f"across {result['seasons']} seasons."
+    )
     return 0
 
 
@@ -177,6 +192,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Archive directory such as 2024-25. Repeatable. Defaults to all.",
     )
 
+    aggregates = subparsers.add_parser("build-season-aggregates")
+    aggregates.add_argument(
+        "--season", action="append", dest="seasons",
+        help="Season label such as 2024/25. Repeatable. Defaults to all stored.",
+    )
+
     evaluate = subparsers.add_parser("evaluate")
     evaluate.add_argument(
         "--season", action="append", dest="seasons",
@@ -207,6 +228,8 @@ def main() -> int:
         return command_import_history(args.directory, args.season)
     if args.command == "import-archive":
         return command_import_archive(args.seasons)
+    if args.command == "build-season-aggregates":
+        return command_build_season_aggregates(args.seasons)
     if args.command == "evaluate":
         return command_evaluate(
             args.seasons, args.output, args.limit, args.min_train_seasons,

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import info_header %}
 {% block title %}Compare · FPL Value Studio{% endblock %}
 {% block content %}
 <div class="page-heading">
@@ -20,27 +21,18 @@
 </form>
 
 {% if selected %}
+<div class="comparison-guide" aria-label="Comparison color scale">
+  <span>Relative score</span><span class="compare-scale-0">Weakest</span><span class="compare-scale-1">Below average</span><span class="compare-scale-2">Middle</span><span class="compare-scale-3">Above average</span><span class="compare-scale-4">Strongest</span>
+</div>
 <div class="table-wrap">
 <table class="data-table comparison">
   <thead>
-    <tr><th>Metric</th>{% for row in selected %}<th>{{ row.player.full_name }}</th>{% endfor %}</tr>
+    <tr><th>{{ info_header("Metric", "metric") }}</th>{% for row in selected %}<th>{{ info_header(row.player.full_name, "player_column") }}</th>{% endfor %}</tr>
   </thead>
   <tbody>
-    <tr><td>Price</td>{% for row in selected %}<td>£{{ "%.1f"|format(row.snapshot.price) }}</td>{% endfor %}</tr>
-    <tr><td>Total points</td>{% for row in selected %}<td>{{ row.snapshot.total_points }}</td>{% endfor %}</tr>
-    <tr><td>Raw value</td>{% for row in selected %}<td>{{ metric_cell(row.snapshot, "value") }}</td>{% endfor %}</tr>
-    <tr><td>Reliable value</td>{% for row in selected %}<td>{{ metric_cell(row.snapshot, "reliable_value") }}</td>{% endfor %}</tr>
-    <tr><td>Forward value</td>{% for row in selected %}<td>{{ metric_cell(row.snapshot, "forward_value") }}</td>{% endfor %}</tr>
-    <tr><td>Projected next fixtures</td>{% for row in selected %}<td>{{ metric_cell(row.snapshot, "projected_points_5") }}</td>{% endfor %}</tr>
-    <tr><td>Rotation risk</td>{% for row in selected %}<td>{{ row.snapshot.rotation_risk or "—" }}</td>{% endfor %}</tr>
-    <tr><td>PPG</td>{% for row in selected %}<td>{{ "%.2f"|format(row.snapshot.points_per_game) }}</td>{% endfor %}</tr>
-    <tr><td>Points / 90</td>{% for row in selected %}<td>{{ metric_cell(row.snapshot, "points_per_90") }}</td>{% endfor %}</tr>
-    <tr><td>Points / start</td>{% for row in selected %}<td>{{ metric_cell(row.snapshot, "points_per_start") }}</td>{% endfor %}</tr>
-    <tr><td>Minutes</td>{% for row in selected %}<td>{{ row.snapshot.minutes }}</td>{% endfor %}</tr>
-    <tr><td>Start rate</td>{% for row in selected %}<td>{{ metric_cell(row.snapshot, "start_rate") }}%</td>{% endfor %}</tr>
-    <tr><td>Expected minutes</td>{% for row in selected %}<td>{{ metric_cell(row.snapshot, "expected_minutes") }}</td>{% endfor %}</tr>
-    <tr><td>Ownership</td>{% for row in selected %}<td>{{ "%.1f"|format(row.snapshot.ownership) }}%</td>{% endfor %}</tr>
-    <tr><td>Average fixture difficulty</td>{% for row in selected %}<td>{{ metric_cell(row.snapshot, "average_fixture_difficulty") }}</td>{% endfor %}</tr>
+    {% for metric in comparison_metrics %}
+    <tr><td>{{ info_header(metric.label, metric.name) }}</td>{% for index in range(selected|length) %}<td class="{{ metric.classes[index] }}">{{ comparison_cell(selected[index].snapshot, metric.name) }}</td>{% endfor %}</tr>
+    {% endfor %}
   </tbody>
 </table>
 </div>

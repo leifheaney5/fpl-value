@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import info_header %}
 {% block title %}Dashboard · FPL Value Studio{% endblock %}
 {% block content %}
 <section class="hero">
@@ -27,6 +28,18 @@
   <article class="stat"><span>Ranked</span><strong>{{ ranked_count }}</strong></article>
   <article class="stat"><span>Last refresh</span><strong class="small-value">{{ latest_time or "Never" }}</strong></article>
   <article class="stat"><span>Refresh status</span><strong class="small-value">{{ latest_run.status if latest_run else "No runs" }}</strong></article>
+</section>
+
+<section class="panel data-status-panel">
+  <div class="panel-title"><h2>Data freshness</h2><span class="status-{{ data_status.state }}">{{ data_status.state|replace("_", " ")|title }}</span></div>
+  <p class="muted">Season {{ data_status.season }}{% if data_status.current_event %} · current event GW{{ data_status.current_event }}{% endif %}</p>
+  {% if data_status.state == "never_refreshed" %}
+  <p class="error">No refresh has completed yet.</p>
+  {% elif data_status.state in ["stale", "failed"] %}
+  <p class="error">Data may be stale.{% if data_status.last_run_error %} {{ data_status.last_run_error }}{% endif %}</p>
+  {% else %}
+  <p class="muted">Last successful refresh: {{ data_status.last_success_at or "Unknown" }}{% if data_status.snapshot_age_seconds is not none %} · snapshot age {{ "%.0f"|format(data_status.snapshot_age_seconds / 3600) }}h{% endif %}.</p>
+  {% endif %}
 </section>
 
 <section class="panel readiness">
@@ -63,12 +76,13 @@
 {% if my_team %}
 <section class="panel my-team-panel">
   <div class="panel-title"><div><p class="eyebrow">MY FPL TEAM</p><h2>{{ my_team.name }}</h2><p class="muted">{{ my_team.manager }} · Entry {{ my_team.entry_id }}</p></div><a href="https://fantasy.premierleague.com/en/entry/{{ my_team.entry_id }}/history" target="_blank" rel="noreferrer">Open in FPL ↗</a></div>
+  {% if my_team._freshness and my_team._freshness.stale %}<p class="error">Showing the last available My Team snapshot for gameweek {{ my_team.event or "unknown" }} while the FPL feed is temporarily unavailable.</p>{% endif %}
   {% if my_team.error %}
     <p class="error">{{ my_team.error }}</p>
   {% else %}
     <div class="team-summary"><span><strong>{{ my_team.overall_points or "—" }}</strong> points</span><span><strong>{{ my_team.overall_rank or "—" }}</strong> overall rank</span><span><strong>{{ my_team.event or "Pre-season" }}</strong> gameweek</span></div>
     {% if my_team.picks_available %}
-    <div class="table-wrap"><table><thead><tr><th>Player</th><th>Position</th><th>Price</th><th>Reliable</th><th>Forward</th><th>Captain</th></tr></thead><tbody>{% for item in my_team.squad %}<tr><td><a href="/players/{{ item.row.player.id }}">{{ item.row.player.full_name }}</a></td><td>{{ item.row.player.position_short }}</td><td>£{{ "%.1f"|format(item.row.snapshot.price) }}</td><td><span class="sheet-chip tier-{{ item.row.snapshot.reliable_tier|lower|replace(' ', '-')|replace('%','') }}">{{ metric_cell(item.row.snapshot, "reliable_value") }}</span></td><td><span class="sheet-chip tier-{{ item.row.snapshot.forward_tier|lower|replace(' ', '-')|replace('%','') }}">{{ metric_cell(item.row.snapshot, "forward_value") }}</span></td><td>{{ "Captain" if item.pick.get('is_captain') else "Vice-captain" if item.pick.get('is_vice_captain') else "—" }}</td></tr>{% endfor %}</tbody></table></div>
+    <div class="table-wrap"><table><thead><tr><th>{{ info_header("Player", "player") }}</th><th>{{ info_header("Position", "position") }}</th><th>{{ info_header("Price", "price") }}</th><th>{{ info_header("Reliable", "reliable") }}</th><th>{{ info_header("Forward", "forward") }}</th><th>{{ info_header("Captain", "captain") }}</th></tr></thead><tbody>{% for item in my_team.squad %}<tr><td><a href="/players/{{ item.row.player.id }}">{{ item.row.player.full_name }}</a></td><td>{{ item.row.player.position_short }}</td><td>£{{ "%.1f"|format(item.row.snapshot.price) }}</td><td><span class="sheet-chip tier-{{ item.row.snapshot.reliable_tier|lower|replace(' ', '-')|replace('%','') }}">{{ metric_cell(item.row.snapshot, "reliable_value") }}</span></td><td><span class="sheet-chip tier-{{ item.row.snapshot.forward_tier|lower|replace(' ', '-')|replace('%','') }}">{{ metric_cell(item.row.snapshot, "forward_value") }}</span></td><td>{{ "Captain" if item.pick.get('is_captain') else "Vice-captain" if item.pick.get('is_vice_captain') else "—" }}</td></tr>{% endfor %}</tbody></table></div>
     {% else %}<p class="muted">Your team is linked. Current picks will appear here when the gameweek squad endpoint becomes available.</p>{% endif %}
   {% endif %}
 </section>
@@ -78,7 +92,7 @@
   <article class="panel">
     <div class="panel-title"><h2>Top reliable value</h2><a href="/players?sort=reliable_value">View all</a></div>
     <table>
-      <thead><tr><th>Player</th><th>Pos</th><th>Price</th><th>Reliable</th></tr></thead>
+      <thead><tr><th>{{ info_header("Player", "player") }}</th><th>{{ info_header("Pos", "pos") }}</th><th>{{ info_header("Price", "price") }}</th><th>{{ info_header("Reliable", "reliable") }}</th></tr></thead>
       <tbody>
       {% for row in best_reliable %}
         <tr>
@@ -95,7 +109,7 @@
   <article class="panel">
     <div class="panel-title"><h2>Top forward value</h2><a href="/forward">View all</a></div>
     <table>
-      <thead><tr><th>Player</th><th>Fixtures</th><th>Projected</th><th>Forward</th></tr></thead>
+      <thead><tr><th>{{ info_header("Player", "player") }}</th><th>{{ info_header("Fixtures", "fixtures") }}</th><th>{{ info_header("Projected", "projected") }}</th><th>{{ info_header("Forward", "forward") }}</th></tr></thead>
       <tbody>
       {% for row in best_forward %}
         <tr>
@@ -112,7 +126,7 @@
   <article class="panel">
     <div class="panel-title"><h2>Lowest rotation risk</h2><a href="/rotation">View all</a></div>
     <table>
-      <thead><tr><th>Player</th><th>Starts</th><th>Minutes</th><th>Risk</th></tr></thead>
+      <thead><tr><th>{{ info_header("Player", "player") }}</th><th>{{ info_header("Starts", "start") }}</th><th>{{ info_header("Minutes", "minutes") }}</th><th>{{ info_header("Risk", "risk") }}</th></tr></thead>
       <tbody>
       {% for row in low_rotation %}
         <tr>
@@ -137,7 +151,7 @@
   <article class="panel">
     <div class="panel-title"><h2>{{ comparison_label }} value risers</h2><a href="/movers?period={{ comparison_label }}">View movers</a></div>
     <table>
-      <thead><tr><th>Player</th><th>Current</th><th>Change</th><th>Rank Δ</th></tr></thead>
+      <thead><tr><th>{{ info_header("Player", "player") }}</th><th>{{ info_header("Current", "current") }}</th><th>{{ info_header("Change", "change") }}</th><th>{{ info_header("Rank Δ", "rank_delta") }}</th></tr></thead>
       <tbody>
       {% for row in top_risers %}
         <tr>
@@ -156,7 +170,7 @@
   <article class="panel">
     <div class="panel-title"><h2>{{ comparison_label }} value fallers</h2><a href="/movers?period={{ comparison_label }}">View movers</a></div>
     <table>
-      <thead><tr><th>Player</th><th>Current</th><th>Change</th><th>Rank Δ</th></tr></thead>
+      <thead><tr><th>{{ info_header("Player", "player") }}</th><th>{{ info_header("Current", "current") }}</th><th>{{ info_header("Change", "change") }}</th><th>{{ info_header("Rank Δ", "rank_delta") }}</th></tr></thead>
       <tbody>
       {% for row in top_fallers %}
         <tr>

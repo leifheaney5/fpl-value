@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import info_header %}
 {% block title %}Schema changes · FPL Value Studio{% endblock %}
 {% block content %}
 <div class="page-heading">
@@ -7,7 +8,7 @@
 <p class="muted">The first observation of the FPL schema is recorded as a <strong>Baseline</strong>, not as a change. Only fields that appear or disappear afterwards are changes.</p>
 <div class="table-wrap">
 <table class="data-table">
-  <thead><tr><th>Detected</th><th>Category</th><th>Change</th><th>Field</th></tr></thead>
+  <thead><tr><th>{{ info_header("Detected", "detected") }}</th><th>{{ info_header("Category", "schema_category") }}</th><th>{{ info_header("Change", "schema_change") }}</th><th>{{ info_header("Field", "field") }}</th></tr></thead>
   <tbody>
   {% for change in changes %}
     <tr class="{{ 'schema-baseline' if change.change_type == 'Baseline' }}"><td>{{ change.detected_at }}</td><td>{{ change.category }}</td><td>{{ change.change_type }}</td><td><code>{{ change.field_name }}</code></td></tr>

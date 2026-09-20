@@ -4,6 +4,29 @@ The web service runs `bash scripts/start-web.sh`, which applies `alembic upgrade
 head` and starts Uvicorn on `PORT`. The refresh job runs
 `bash scripts/run-refresh.sh --scheduled` and exits after one refresh.
 
+## Current Railway target (not yet production-ready)
+
+The active Railway project and web service are retained as the next release
+target. A successful container deployment is not evidence that the application
+has durable data or completed a refresh; the target must first have PostgreSQL,
+the scheduled refresh service, and the variables listed in
+[`docs/PRODUCTION_CHECKLIST.md`](docs/PRODUCTION_CHECKLIST.md).
+
+| Resource | Value |
+| --- | --- |
+| Project | `fpl-value-studio` (`e54df4c5-d15f-48cc-a164-2fedafa9c7cc`) |
+| Environment | `production` (`ca46ed57-89c4-4861-9970-2b85770b285d`) |
+| Web service | `fpl-value-studio` (`c69cfd06-a450-4620-9e8d-af62130028d1`) |
+| Domain | `https://fpl-value-studio-production.up.railway.app` |
+| Web start | `bash scripts/start-web.sh` |
+| Refresh start | `bash scripts/run-refresh.sh --scheduled` |
+
+Railway production must use PostgreSQL. The local SQLite fallback is for
+development and tests only; it is not durable production storage. Never treat
+HTTP 200, an uploaded image, or a Railway deployment status alone as proof of
+data readiness. Record the exact deployment ID, terminal status, database
+dialect, refresh result, and public route checks in the production checklist.
+
 **Production runs on `linux-leif`**, in Docker, behind the host Caddy instance,
 at <https://fpl-studio.leif.media>. Railway hosted this application until
 2026-09-02 and is retained unchanged as a fallback; see [Railway (previous
@@ -143,6 +166,14 @@ ssh leif@100.84.43.115 \
 boot. Watch `docker compose logs -f app` for `Running upgrade 0007 -> 0008`
 before assuming the predictions table exists.
 
+Migration `0012` creates `player_season_aggregates` empty. Populate it once per
+environment that has the archive imported, or "Show past seasons" reports that
+nothing has been built:
+
+```bash
+python -m app.cli build-season-aggregates
+```
+
 **Rolling back a model** does not require a redeploy of the application: point
 at a previous artefact directory. Each carries its own manifest recording model
 version, feature version, training seasons, seed and held-out scores.
@@ -174,13 +205,13 @@ previous-season data; an untagged import would land in the same table as the
 current season, where a value delta across the boundary reads as player
 movement rather than a season rollover.
 
-## Railway (retired)
+## Railway (previous arrangement and historical cutover)
 
-Railway served this application publicly, with `ACCESS_MODE=demo`, until
-2026-09-02. The project was **deleted on 2026-09-02**, together with its
-database. `railway.json`, `railway.cron.json` and `scripts/deploy-railway.sh`
-were removed in the same change; Git history retains them if the arrangement
-ever needs reconstructing.
+Railway previously served this application publicly, with `ACCESS_MODE=demo`,
+until the self-hosted cutover on 2026-09-02. The prior Railway database and
+deployment arrangement are historical; the current project and service IDs
+above are the explicit release target and must not be conflated with the
+self-hosted production database.
 
 Its cron service was already failing before the migration — `refresh_runs` 49
 and 50 both recorded `failed`, and the service showed `Crashed`. That is a fault
@@ -191,7 +222,7 @@ The only surviving copy of the Railway database is
 self-hosted database has been the authoritative copy since, so that dump is of
 historical interest only.
 
-`scripts/start-web.sh` still honours `RUN_REFRESH_ONLY=true`, which existed so a
-second Railway service could share one image and exit after refreshing. Nothing
-sets it now — the self-hosted stack uses a dedicated `refresh` service instead —
-but it is harmless and remains a working way to run a refresh-only container.
+`scripts/start-web.sh` honours `RUN_REFRESH_ONLY=true` so a second Railway
+service can share one image and exit after refreshing. The self-hosted stack
+uses a dedicated `refresh` service instead; that is separate deployment
+history, not evidence that the Railway scheduled service is configured.

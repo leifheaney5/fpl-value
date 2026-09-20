@@ -1,9 +1,14 @@
 import threading
 from types import SimpleNamespace
 
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+
 from app.services import my_team as my_team_service
 from app.services.my_team import linked_team_data
 from app.config import Settings
+from app.db.base import Base
+from app.db.models import LinkedTeamSnapshot
 
 
 class TeamClient:
@@ -53,6 +58,14 @@ class ErroringBootstrapTeamClient(TeamClient):
         raise RuntimeError("FPL is unavailable")
 
 
+class TransientNewerPicksTeamClient(TeamClient):
+    def entry_picks(self, entry_id, event_id):
+        self.picks_events.append(event_id)
+        if event_id == 4:
+            raise RuntimeError("FPL request timed out")
+        return {"picks": [{"element": 10, "is_captain": True}]}
+
+
 class BlockingBootstrapTeamClient(TeamClient):
     def __init__(self, started, release):
         super().__init__()
@@ -70,6 +83,14 @@ def _rows():
         "player": SimpleNamespace(id=10, full_name="Ada Example"),
         "snapshot": SimpleNamespace(captured_at=None),
     }]
+
+
+class OfflineTeamClient(TeamClient):
+    def entry(self, entry_id):
+        raise RuntimeError("offline")
+
+    def bootstrap(self):
+        raise RuntimeError("offline")
 
 
 def test_my_team_uses_the_upcoming_gameweek_for_current_picks(monkeypatch):
@@ -103,6 +124,7 @@ def test_forced_team_refresh_bypasses_a_valid_cached_snapshot():
 
 def test_my_team_falls_back_when_upcoming_picks_are_not_published(monkeypatch):
     client = UnpublishedUpcomingTeamClient()
+    monkeypatch.setattr(my_team_service, "_REMOTE_CACHE", my_team_service.FreshnessCache())
     monkeypatch.setattr(my_team_service, "latest_rows", lambda db, season: _rows())
     my_team_service.clear_remote_team_cache()
     settings = Settings(fpl_entry_id=123, current_season="2026/27")
@@ -143,6 +165,34 @@ def test_fpl_error_keeps_the_last_valid_team_snapshot_as_stale():
     assert stale["_freshness"]["last_error"] == "FPL is unavailable"
 
 
+def test_manual_invalidation_keeps_last_valid_snapshot_on_refresh_error():
+    my_team_service.clear_remote_team_cache()
+    initial = TeamClient()
+    my_team_service._remote_team_data(initial, 123)
+    my_team_service.clear_remote_team_cache(123)
+
+    stale = my_team_service._remote_team_data(
+        ErroringBootstrapTeamClient(), 123
+    )
+
+    assert stale["picks_event"] == 4
+    assert stale["_freshness"]["stale"] is True
+
+
+def test_transient_newer_picks_failure_keeps_newer_snapshot_stale():
+    my_team_service.clear_remote_team_cache()
+    initial = TeamClient()
+    my_team_service._remote_team_data(initial, 123)
+
+    stale = my_team_service._remote_team_data(
+        TransientNewerPicksTeamClient(), 123, force=True
+    )
+
+    assert stale["picks_event"] == 4
+    assert stale["_freshness"]["stale"] is True
+    assert stale["_freshness"]["last_error"] == "FPL request timed out"
+
+
 def test_invalidated_inflight_snapshot_cannot_overwrite_the_newer_event_generation():
     my_team_service.clear_remote_team_cache()
     initial = TeamClient()
@@ -176,3 +226,50 @@ def test_invalidated_inflight_snapshot_cannot_overwrite_the_newer_event_generati
     assert refreshed["picks_event"] == 5
     assert cached["picks_event"] == 5
     assert cached["_freshness"]["cache_hit"] is True
+
+
+def test_successful_team_load_writes_a_snapshot(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'linked-team.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(engine, expire_on_commit=False)
+    settings = Settings(fpl_entry_id=123, current_season="2026/27")
+    my_team_service.clear_remote_team_cache()
+
+    with Session() as db:
+        result = linked_team_data(db, TeamClient(), settings, rows=_rows())
+        stored = db.scalar(
+            select(LinkedTeamSnapshot).where(
+                LinkedTeamSnapshot.entry_id == 123
+            )
+        )
+
+    assert stored is not None
+    assert stored.selected_event == result["event"]
+    assert stored.stale is False
+    assert stored.payload["picks_event"] == result["event"]
+
+
+def test_new_cache_reads_last_valid_snapshot_as_stale(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'linked-team-fallback.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(engine, expire_on_commit=False)
+    settings = Settings(fpl_entry_id=123, current_season="2026/27")
+    my_team_service.clear_remote_team_cache()
+
+    with Session() as db:
+        linked_team_data(db, TeamClient(), settings, rows=_rows())
+
+    my_team_service._REMOTE_CACHE = my_team_service.FreshnessCache()
+    with Session() as db:
+        result = linked_team_data(
+            db, OfflineTeamClient(), settings, rows=_rows()
+        )
+
+    assert result["_freshness"]["stale"] is True
+    assert result["event"] == 4

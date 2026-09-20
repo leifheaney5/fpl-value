@@ -6,7 +6,7 @@ from typing import Any
 from threading import Lock
 import logging
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.analytics.contracts import CONTRACTS, MetricStatus
@@ -16,6 +16,8 @@ from app.analytics.metrics import (
     availability_factor,
     expected_minutes,
     project_next_fixtures,
+    pick_score,
+    recent_window,
     reliability_factor,
     rotation_risk,
     safe_float,
@@ -227,6 +229,9 @@ def refresh_data(
     settings: Settings,
     client: FPLClient | None = None,
 ) -> RefreshRun:
+    if client is None:
+        with FPLClient(settings) as owned_client:
+            return refresh_data(db, settings, owned_client)
     if not _refresh_lock.acquire(blocking=False):
         raise RuntimeError("A refresh is already in progress")
     database_lock = False
@@ -239,7 +244,6 @@ def refresh_data(
         if not database_lock:
             _refresh_lock.release()
             raise RuntimeError("A refresh is already in progress")
-    client = client or FPLClient(settings)
     started_at = utcnow()
     logger.info("refresh_start started_at=%s", started_at.isoformat())
 
@@ -299,16 +303,20 @@ def refresh_data(
 
         for item in teams_payload:
             team_id = safe_int(item.get("id"))
+            official_code = safe_int(item.get("code"), 0) or None
             team = db.get(Team, team_id)
             if team is None:
                 team = Team(
                     id=team_id,
+                    code=official_code,
                     name=str(item.get("name") or "Unknown"),
                     short_name=str(item.get("short_name") or ""),
                     updated_at=captured_at,
                 )
                 db.add(team)
             else:
+                if official_code is not None:
+                    team.code = official_code
                 team.name = str(item.get("name") or team.name)
                 team.short_name = str(
                     item.get("short_name") or team.short_name
@@ -426,6 +434,26 @@ def refresh_data(
             if isinstance(item, dict)
         ]
         computed: list[dict[str, Any]] = []
+
+        # Earlier readings of each player's season totals, one per distinct
+        # team-match count, so Perfect Pick can difference against the reading
+        # three matches back. One grouped query rather than one per player.
+        # Totals only grow within a season, so the maximum at a given match
+        # count is the final reading for it, bonus points included.
+        checkpoints: dict[int, list[tuple[int, int, int]]] = {}
+        for seen_player, seen_matches, seen_points, seen_minutes in db.execute(
+            select(
+                PlayerSnapshot.player_id,
+                PlayerSnapshot.team_matches,
+                func.max(PlayerSnapshot.total_points),
+                func.max(PlayerSnapshot.minutes),
+            )
+            .where(PlayerSnapshot.season == settings.current_season)
+            .group_by(PlayerSnapshot.player_id, PlayerSnapshot.team_matches)
+        ):
+            checkpoints.setdefault(seen_player, []).append(
+                (seen_matches, seen_points, seen_minutes)
+            )
 
         for item in players_payload:
             player_id = safe_int(item.get("id"))
@@ -570,6 +598,12 @@ def refresh_data(
                 recent_minutes = minutes - old.minutes
 
             availability = availability_factor(item)
+            recent_points, recent_minutes_rate = recent_window(
+                checkpoints.get(player_id, []), matches, points, minutes
+            )
+            pick = pick_score(pptm, recent_points, recent_minutes_rate)
+            if pick is not None:
+                pick *= availability
             exp_minutes = expected_minutes(
                 minutes, starts, matches, availability
             )
@@ -641,6 +675,7 @@ def refresh_data(
                     "value": _round(value, 3),
                     "reliability_factor": reliable_factor,
                     "reliable_value": _round(reliable_value, 3),
+                    "pick_score": _round(pick, 3),
                     "rotation_risk": risk,
                     "rotation_tier": risk_tier,
                     "rotation_confidence": risk_confidence,
@@ -668,6 +703,9 @@ def refresh_data(
                         ),
                         "reliable_value": _status(
                             reliable_value, "reliable_value", no_matches_reason, has_matches
+                        ),
+                        "pick_score": _status(
+                            pick, "pick_score", no_matches_reason, has_matches
                         ),
                         "start_rate": _status(
                             start_rate, "start_rate", no_matches_reason, has_matches
@@ -773,6 +811,13 @@ def refresh_data(
             "position_reliable_rank",
             "position_reliable_percentile",
             "position_reliable_tier",
+        )
+        assign_global_ranks(
+            computed,
+            "pick_score",
+            "pick_rank",
+            "pick_percentile",
+            "pick_tier",
         )
         assign_global_ranks(
             computed,

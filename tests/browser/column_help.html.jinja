@@ -1,0 +1,14 @@
+{% from "_macros.html" import info_header %}
+<!doctype html>
+<html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="padding:16px">
+<h1>Column help browser fixture</h1>
+<div class="table-wrap" style="max-height:130px">
+<table class="data-table sortable-table" style="min-width:1000px">
+<thead><tr><th>{{ info_header("Player", "player") }}</th><th style="width:150px"><button type="button" class="sort-button">{{ info_header("Price", "price", false) }}</button></th><th style="width:150px">{{ info_header("Expected minutes", "expected_minutes") }}</th></tr></thead>
+<tbody>{% for name, price in [("One", 8), ("Two", 5), ("Three", 7)] %}<tr><td data-sort-value="{{ name }}">{{ name }}</td><td data-sort-value="{{ price }}">{{ price }}</td><td>80</td></tr>{% endfor %}</tbody>
+</table></div>
+<button id="outside" type="button">Outside target</button>
+<div style="height:900px"></div>
+<div class="table-wrap"><table class="comparison"><tbody><tr><td>{{ info_header("Rank change", "delta_rank") }}</td><td>+5</td></tr></tbody></table></div>
+</body></html>

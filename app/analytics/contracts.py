@@ -144,6 +144,29 @@ CONTRACTS: dict[str, MetricContract] = {
         minimum_sample=1,
         null_behaviour="Null when either input is null.",
     ),
+    "pick_score": _contract(
+        name="pick_score",
+        formula=(
+            "(0.85 * points_per_team_match + 0.15 * recent_points_per_match) * "
+            "(0.25 + 0.75 * min(recent_minutes_per_match / 90, 1)) * "
+            "availability_factor"
+        ),
+        inputs=(
+            "total_points", "minutes", "team_matches", "availability_factor",
+            "earlier snapshots of this season",
+        ),
+        input_seasons=("current",),
+        target_season="current",
+        unit="pts per match",
+        valid_range=(0.0, 30.0),
+        minimum_sample=1,
+        null_behaviour=(
+            "Null until the team has played a match this season. Recent means "
+            "the last three team matches, or the season so far when fewer have "
+            "been played. The availability term cannot be evaluated on the "
+            "archive, which carries no injury flags."
+        ),
+    ),
     "start_rate": _contract(
         name="start_rate",
         formula="100 * starts / team_matches",

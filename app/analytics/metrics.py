@@ -82,6 +82,82 @@ def reliability_factor(
     )
 
 
+# Perfect Pick weights. Chosen on the 2017/18-2021/22 walk-forward folds and
+# confirmed on 2022/23-2025/26; see docs/RANKING_EVALUATION.md. The surface is
+# flat around these values, so they are not worth re-tuning.
+PICK_FORM_WEIGHT = 0.15
+PICK_SECURITY_FLOOR = 0.25
+
+
+def pick_score(
+    points_per_match: float | None,
+    recent_points_per_match: float | None,
+    recent_minutes_per_match: float | None,
+) -> float | None:
+    """Quality, nudged by form, scaled by whether he is currently playing.
+
+    ``points_per_match`` divides by every match the team has played, benched
+    ones included, which is what made it the best single ordering measured. The
+    recent terms cover the last three team matches.
+
+    The minutes term is deliberately partial. Scaling fully by recent minutes
+    ranked players worse than ignoring minutes altogether: one missed match is
+    not grounds for writing a player off.
+    """
+    if points_per_match is None:
+        return None
+    quality = points_per_match
+    if recent_points_per_match is not None:
+        quality = (
+            (1.0 - PICK_FORM_WEIGHT) * points_per_match
+            + PICK_FORM_WEIGHT * recent_points_per_match
+        )
+    if recent_minutes_per_match is None:
+        return quality
+    share = clamp(recent_minutes_per_match / 90.0, 0.0, 1.0)
+    return quality * (PICK_SECURITY_FLOOR + (1.0 - PICK_SECURITY_FLOOR) * share)
+
+
+PICK_WINDOW_MATCHES = 3
+
+
+def recent_window(
+    checkpoints: list[tuple[int, int, int]],
+    team_matches: int,
+    points: int,
+    minutes: int,
+    size: int = PICK_WINDOW_MATCHES,
+) -> tuple[float | None, float | None]:
+    """Points and minutes per team match over the last ``size`` matches.
+
+    ``checkpoints`` are earlier ``(team_matches, total_points, minutes)``
+    readings from this season's snapshots. The FPL API reports season totals,
+    so a recent rate is the difference against the reading taken ``size``
+    matches ago.
+
+    Until ``size`` matches have been played the window is the season so far,
+    which is what the evaluated feature does. When the stored history does not
+    reach back far enough, a shorter window is used rather than none.
+    """
+    if team_matches <= 0:
+        return None, None
+    if team_matches <= size:
+        return points / team_matches, minutes / team_matches
+    older = [item for item in checkpoints if item[0] <= team_matches - size]
+    newer = [item for item in checkpoints if team_matches - size < item[0] < team_matches]
+    if older:
+        reference = max(older, key=lambda item: item[0])
+    elif newer:
+        reference = min(newer, key=lambda item: item[0])
+    else:
+        return None, None
+    played = team_matches - reference[0]
+    # A total that went backwards is a source correction, not a recent rate.
+    if minutes < reference[2]:
+        return None, None
+    return (points - reference[1]) / played, (minutes - reference[2]) / played
+
+
 def rotation_risk(
     minutes: int,
     starts: int,

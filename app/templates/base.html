@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}FPL Value Studio{% endblock %}</title>
-  <link rel="stylesheet" href="/static/app.css">
-  <script defer src="/static/app.js"></script>
+  <link rel="stylesheet" href="/static/app.css?v={{ asset_versions['app.css'] }}">
+  <script defer src="/static/app.js?v={{ asset_versions['app.js'] }}"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>

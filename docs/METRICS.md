@@ -110,6 +110,76 @@ seasons — a value delta across a rollover looks like player movement but is no
 `python -m app.cli import-history --directory <dir> --season 2025/26` requires
 the season explicitly and never infers it.
 
+## Perfect Pick
+
+The single reference ordering, abbreviated PP and shown between Pos %ile and
+Reliable. It is stored and evaluated under the name `pick_score`.
+
+```
+quality  = 0.85 * points_per_team_match + 0.15 * recent_points_per_match
+security = 0.25 + 0.75 * min(recent_minutes_per_match / 90, 1)
+pick     = quality * security * availability_factor
+```
+
+Source: `pick_score` and `recent_window` in `app/analytics/metrics.py`. The
+unit is points per match, so a 6.2 reads as roughly 6.2 points a game.
+
+- **Points per team match, not FPL's points per game.** It divides by every
+  match the team has played, benched ones included. That is why it was already
+  the best single ordering: availability is inside the number.
+- **Recent** is the last three team matches, taken as the difference between
+  the current season totals and the snapshot from three matches back. Until
+  three have been played it is the season so far. If stored snapshots do not
+  reach back three matches, a shorter window is used.
+- **The minutes term is partial on purpose.** Scaling fully by recent minutes
+  (a floor of 0) ranked players *worse* than plain points per game, 0.7345
+  against 0.7368. One missed match is not grounds to write a player off.
+- **Price is not in it.** See `docs/RANKING_EVALUATION.md` for the measured
+  effect of dividing by price. Value and Reliable remain the price-aware columns.
+- **Points per 90 is not in it**, despite being an obvious ingredient. It has a
+  negative rank correlation for midfielders and forwards.
+- **Last season is not in it.** Blending in the previous season's rate made the
+  ordering worse the more weight it was given (0.7208, 0.7086, 0.6875).
+- **`availability_factor` is the one untested term.** The archive carries no
+  injury flags, so the evaluated score omits it, as it does for Reliable.
+- Null until the team has played a match this season.
+
+The weights were chosen on the 2017/18–2021/22 folds and confirmed on
+2022/23–2025/26. Five neighbouring settings score within 0.002 of each other,
+so the gain comes from the structure, not the particular weights.
+
+## Past-season measures
+
+Shown by the spreadsheet's "Show past seasons" toggle and on player pages. They
+describe completed seasons only; the current season is never pooled into them.
+Source: `app/services/season_history.py`, reading `player_season_aggregates`.
+
+| Measure | Definition | Withheld when |
+| --- | --- | --- |
+| Season P/90 | `points × 90 / minutes` | season minutes < 270 |
+| Qualifying season | minutes ≥ `RELIABILITY_SAMPLE_MINUTES` (900) | — |
+| Avg P/90 | mean of season P/90 over qualifying seasons | no qualifying season |
+| Spread | sample standard deviation of those season P/90s | fewer than 2 qualifying seasons |
+| Consistency | `Spread / Avg P/90`: ≤ 0.15 Steady, ≤ 0.30 Variable, else Volatile | fewer than 2 qualifying seasons |
+| GW SD | standard deviation of points per appearance, pooled | fewer than 10 appearances |
+| Blank % / Haul % | appearances with ≤ 2 / ≥ 10 points, pooled | fewer than 10 appearances |
+| Start % | starts / fixtures registered for, pooled | fewer than 19 fixtures |
+| Durability | minutes / (90 × fixtures registered for): ≥ 70% High, ≥ 40% Medium, else Low | fewer than 19 fixtures |
+
+- **Pooled** means summed from the player's first qualifying season onward.
+  Pooling every season rated Saka and Palmer as fragile because of years spent
+  registered as academy players. A player with no qualifying season is pooled
+  over everything he has.
+- The archive has a row for every fixture a player was registered for, played
+  or not. That is the availability denominator, so a January signing is judged
+  only on the fixtures he was there for.
+- Starts before 2022/23 are inferred from minutes. A `~` marks any start rate
+  that includes such a season.
+- Standard deviations across seasons are derived from stored sums and sums of
+  squares; per-season deviations cannot be averaged.
+- The bands are descriptive conventions chosen against the 2016/17–2025/26
+  data, not fitted to an outcome. They have not been evaluated as predictors.
+
 ## Ranking coverage
 
 `assign_global_ranks` returns a count of exclusions by reason instead of

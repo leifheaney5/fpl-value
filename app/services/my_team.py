@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.fpl_client import FPLClient
+from app.api.fpl_client import FPLClient, FPLRequestError
 from app.config import Settings
+from app.db.models import LinkedTeamSnapshot
 from app.services.freshness import FreshnessCache, MY_TEAM_POLICY
 from app.services.queries import latest_rows
 
@@ -54,21 +57,30 @@ def _load_remote_team_data(client: FPLClient, entry_id: int) -> dict[str, Any]:
         benchmark_events = []
     picks: list[dict[str, Any]] = []
     picks_event: int | None = None
-    last_picks_error: Exception | None = None
     for candidate in _picks_event_candidates(entry, benchmark_events):
         try:
             candidate_payload = client.entry_picks(entry_id, candidate)
-        except (RuntimeError, ValueError) as error:
-            last_picks_error = error
-            continue
+        except FPLRequestError as error:
+            if error.status_code == 404:
+                continue
+            raise
+        except RuntimeError as error:
+            # Some test doubles and older client implementations expose the
+            # unpublished-picks condition without an HTTP status. Treat only
+            # that explicit condition as an expected fallback; timeouts and
+            # other runtime failures must preserve the newer snapshot.
+            error_text = str(error).lower()
+            if "not published" in error_text or "not been published" in error_text:
+                continue
+            raise
+        except ValueError:
+            raise
         candidate_picks = candidate_payload.get("picks") if isinstance(candidate_payload, dict) else None
         if isinstance(candidate_picks, list) and candidate_picks:
             picks = candidate_picks
             picks_event = candidate
             break
 
-    if picks_event is None and last_picks_error is not None:
-        raise last_picks_error
     history: dict[str, Any] = {"current": []}
     if picks_event is not None:
         history = client.entry_history(entry_id)
@@ -122,23 +134,72 @@ def _remote_team_data(
     return data
 
 
-def linked_team_data(
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _snapshot_freshness(snapshot: LinkedTeamSnapshot, error: str = "") -> dict[str, Any]:
+    return {
+        "dataset": REMOTE_CACHE_POLICY.name,
+        "fetched_at": snapshot.fetched_at,
+        "expires_at": snapshot.expires_at,
+        "event": snapshot.selected_event,
+        "cache_hit": True,
+        "stale": True,
+        "last_error": error or snapshot.last_error,
+    }
+
+
+def _persist_snapshot(
     db: Session,
-    client: FPLClient,
+    entry_id: int,
+    remote: dict[str, Any],
+) -> None:
+    """Upsert payload metadata without storing credentials or session data."""
+    freshness = remote.get("_freshness") or {}
+    stale = bool(freshness.get("stale"))
+    error = str(freshness.get("last_error") or "")[:300]
+    payload = {
+        key: value for key, value in remote.items() if key != "_freshness"
+    }
+    now = _now_utc()
+    existing = db.scalar(
+        select(LinkedTeamSnapshot).where(
+            LinkedTeamSnapshot.entry_id == entry_id
+        )
+    )
+    if existing is None:
+        existing = LinkedTeamSnapshot(
+            entry_id=entry_id,
+            payload=payload,
+            selected_event=payload.get("picks_event"),
+            fetched_at=now,
+            expires_at=now + timedelta(seconds=REMOTE_CACHE_POLICY.ttl_seconds),
+            stale=stale,
+            last_error=error,
+            updated_at=now,
+        )
+        db.add(existing)
+    else:
+        existing.payload = payload
+        existing.selected_event = payload.get("picks_event")
+        existing.stale = stale
+        existing.last_error = error
+        existing.updated_at = now
+        if not stale:
+            existing.fetched_at = now
+            existing.expires_at = now + timedelta(
+                seconds=REMOTE_CACHE_POLICY.ttl_seconds
+            )
+    db.commit()
+
+
+def _team_view(
+    db: Session,
+    remote: dict[str, Any],
     settings: Settings,
-    *,
-    rows: list[dict[str, Any]] | None = None,
-) -> dict[str, Any] | None:
-    """Return public team information and current picks when an entry is configured."""
-    if not settings.fpl_entry_id:
-        return None
-    remote = _remote_team_data(client, settings.fpl_entry_id)
-    if "error" in remote:
-        return {
-            "entry_id": settings.fpl_entry_id,
-            "error": remote["error"],
-            "_freshness": remote["_freshness"],
-        }
+    rows: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
     entry = remote["entry"]
     current_event = remote["picks_event"]
     history = remote["history"]
@@ -180,6 +241,40 @@ def linked_team_data(
         "benchmark_status": "The public FPL payload does not currently provide top-10k or top-10% performance series.",
         "_freshness": remote["_freshness"],
     }
+
+
+def linked_team_data(
+    db: Session,
+    client: FPLClient,
+    settings: Settings,
+    *,
+    rows: list[dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
+    """Return public team information and current picks when an entry is configured."""
+    if not settings.fpl_entry_id:
+        return None
+    remote = _remote_team_data(client, settings.fpl_entry_id)
+    if "error" in remote:
+        if db is not None:
+            snapshot = db.scalar(
+                select(LinkedTeamSnapshot).where(
+                    LinkedTeamSnapshot.entry_id == settings.fpl_entry_id
+                )
+            )
+            if snapshot is not None:
+                remote = dict(snapshot.payload)
+                remote["_freshness"] = _snapshot_freshness(
+                    snapshot, remote.get("error", "")
+                )
+        if "error" in remote:
+            return {
+                "entry_id": settings.fpl_entry_id,
+                "error": remote["error"],
+                "_freshness": remote["_freshness"],
+            }
+    if db is not None:
+        _persist_snapshot(db, settings.fpl_entry_id, remote)
+    return _team_view(db, remote, settings, rows)
 
 
 def transfer_plan(team: dict[str, Any] | None, recommendation: dict[str, Any] | None) -> list[dict[str, Any]]:

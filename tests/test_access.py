@@ -108,6 +108,7 @@ def test_protection_classes_cover_personal_and_mutation_routes():
     assert protection_for("/static/app.css") == "PUBLIC"
     assert protection_for("/login") == "PUBLIC"
     assert protection_for("/my-team") == "PERSONAL"
+    assert protection_for("/diagnostics") == "PERSONAL"
     assert protection_for("/admin/refresh") == "MUTATION"
     assert protection_for("/spreadsheet") == "ANALYTICS"
     assert protection_for("/") == "ANALYTICS"
@@ -142,7 +143,7 @@ def test_manual_team_refresh_clears_cache_and_redirects(monkeypatch):
     )
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/my-team?refreshed=1"
+    assert response.headers["location"] == "/my-team"
     refreshed = my_team_service._REMOTE_CACHE.get(
         "entry:123",
         lambda: {"entry": {"id": 123, "event": 5}},

@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### Perfect Pick
+
+- A single reference score, shown between Pos %ile and Reliable (migration
+  `0013`): points per team match, nudged towards the last three matches, scaled
+  by recent minutes and by flagged availability.
+- The first composite to clear the ranking gate. It was chosen by walk-forward
+  evaluation, not by intuition: prior-season anchoring, full minutes scaling
+  and price were all tested and all made the ordering worse.
+
+### Past seasons
+
+- "Show past seasons" on the Master Spreadsheet adds season-to-season
+  consistency, gameweek volatility, durability and one points column per stored
+  season. Player pages always show the season-by-season table.
+- Read from a new `player_season_aggregates` table (migration `0012`), built by
+  `python -m app.cli build-season-aggregates` and refreshed by `import-archive`.
+  Grouping ten seasons of history per request took 3.7s.
+- Thin samples are withheld, not scored, and pooled measures count from a
+  player's first 900-minute season so academy years do not read as fragility.
+- The sheet's player-name column is sticky again; a row-tint rule had been
+  overriding it.
+
 ### Trust and access control
 
 - Fail-closed access control with `demo`, `private` and `local` modes. Absent
