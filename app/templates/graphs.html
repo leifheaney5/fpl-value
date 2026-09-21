@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Graphs · FPL Value Studio{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">PLAYER GRAPHS</p><h1>Output against price.</h1><p>Every player in the chosen position, plotted by price. Higher and further left is more output for less money.</p></div></div>
+
+<form class="filters" method="get">
+  <input type="hidden" name="metric" value="{{ metric }}" id="graphMetricInput">
+  <label>Position<select name="position" onchange="this.form.submit()"><option value="">All</option>{% for item in positions %}<option value="{{ item }}" {% if position == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></label>
+  <noscript><button type="submit">Apply</button></noscript>
+</form>
+
+<div class="spreadsheet-tabs" aria-label="Graph metric">{% for key, label in metrics.items() %}<a class="spreadsheet-tab {% if metric == key %}active{% endif %}" href="/graphs?metric={{ key }}{% if position %}&amp;position={{ position }}{% endif %}" data-metric="{{ key }}"{% if metric == key %} aria-current="true"{% endif %}>{{ label }}</a>{% endfor %}</div>
+
+{% if carry_over %}
+<div class="sheet-note sheet-note-warning">
+  No match has been played in this season yet. <strong>These totals describe {{ previous_season }}</strong> — the FPL API keeps serving last season's numbers until the new season starts.
+</div>
+{% endif %}
+
+<section class="panel chart-panel large-chart">
+  <div class="panel-title"><h2 id="graphTitle">{{ metrics[metric] }} vs price</h2><span class="muted"><span id="graphCount">{{ points|length }}</span> players · players sharing a spot are fanned out around it · click a point to open the player · <a href="/spreadsheet{% if position %}?position={{ position }}{% endif %}">view as table</a></span></div>
+  {% if points %}<div class="graph-canvas"><canvas id="playerGraph" role="img" aria-label="Scatter plot of players by price and the selected metric"></canvas></div>
+  {% else %}<p class="empty team-empty">No players are available for this position yet.</p>{% endif %}
+</section>
+
+<script id="graph-data" type="application/json">{{ points|tojson }}</script>
+{% if points %}
+<script>
+(() => {
+  const points = JSON.parse(document.getElementById("graph-data").textContent);
+  const labels = {{ metrics|tojson }};
+  // Colour and shape follow the position, never the filter, so a filtered
+  // graph keeps the same marks as the full one.
+  const marks = {
+    GKP: { color: "#3987e5", pointStyle: "circle", radius: 4.5 },
+    DEF: { color: "#c98500", pointStyle: "triangle", radius: 6 },
+    MID: { color: "#d55181", pointStyle: "rect", radius: 5.5 },
+    FWD: { color: "#008300", pointStyle: "rectRot", radius: 5.5 },
+  };
+  const css = getComputedStyle(document.documentElement);
+  const ink = css.getPropertyValue("--text").trim();
+  const muted = css.getPropertyValue("--muted").trim();
+  const line = css.getPropertyValue("--line").trim();
+  const panel = css.getPropertyValue("--panel").trim();
+  let metric = {{ metric|tojson }};
+  let bounds = {};
+
+  // Counting stats and half-million prices put dozens of players on exactly
+  // the same spot. Fan each stack out in a small spiral so every player keeps
+  // a visible point; tooltips and labels still report the true values.
+  const placed = () => {
+    const plotted = points.filter((point) => point[metric] !== null);
+    const prices = plotted.map((point) => point.price);
+    const values = plotted.map((point) => point[metric]);
+    const stepX = (Math.max(...prices) - Math.min(...prices) || 1) * 0.0045;
+    const stepY = (Math.max(...values, 0) - Math.min(...values, 0) || 1) * 0.009;
+    // Pin the axes to the data: left to itself a narrow chart rounds price
+    // out to 0-20 and leaves most of the plot empty.
+    bounds = {
+      xMin: Math.floor(Math.min(...prices) - 0.5), xMax: Math.ceil(Math.max(...prices) + 0.5),
+      yMin: Math.min(...values, 0) - stepY * 8,
+    };
+    const stacked = {};
+    return plotted.map((point) => {
+      const spot = point.price + "|" + point[metric];
+      const k = stacked[spot] = (stacked[spot] ?? -1) + 1;
+      const reach = Math.sqrt(Math.min(k, 40));
+      return {
+        x: point.price + stepX * reach * Math.cos(k * 2.39996),
+        y: point[metric] + stepY * reach * Math.sin(k * 2.39996),
+        player: point,
+      };
+    });
+  };
+
+  const datasets = () => {
+    const all = placed();
+    return Object.keys(marks)
+    .map((position) => ({
+      label: position,
+      data: all.filter((item) => item.player.position === position),
+      backgroundColor: marks[position].color,
+      borderColor: panel,
+      borderWidth: 1,
+      pointStyle: marks[position].pointStyle,
+      pointRadius: marks[position].radius,
+      pointHoverRadius: marks[position].radius + 3,
+      pointHitRadius: 8,
+    }))
+    .filter((dataset) => dataset.data.length);
+  };
+
+  // Name only the leaders; a label on every point would bury the plot.
+  const leaderLabels = {
+    id: "leaderLabels",
+    afterDatasetsDraw(chart) {
+      const visible = [];
+      chart.data.datasets.forEach((dataset, index) => {
+        if (!chart.isDatasetVisible(index)) return;
+        chart.getDatasetMeta(index).data.forEach((element, i) => visible.push({ element, raw: dataset.data[i] }));
+      });
+      visible.sort((a, b) => b.raw.player[metric] - a.raw.player[metric]);
+      const { ctx, chartArea } = chart;
+      ctx.save();
+      ctx.font = "600 11px system-ui, sans-serif";
+      ctx.fillStyle = ink;
+      ctx.textBaseline = "middle";
+      const drawn = [];
+      visible.slice(0, 8).forEach(({ element, raw }) => {
+        const name = raw.player.name.split(" ").slice(-1)[0];
+        const width = ctx.measureText(name).width;
+        const flip = element.x + 10 + width > chartArea.right;
+        const left = flip ? element.x - 10 - width : element.x + 10;
+        // A label that would sit on an earlier one is dropped, not overprinted.
+        if (drawn.some((box) => left < box.right && left + width > box.left && Math.abs(element.y - box.y) < 13)) return;
+        drawn.push({ left, right: left + width, y: element.y });
+        ctx.textAlign = "left";
+        ctx.fillText(name, left, element.y);
+      });
+      ctx.restore();
+    },
+  };
+
+  const chart = new Chart(document.getElementById("playerGraph"), {
+    type: "scatter",
+    data: { datasets: datasets() },
+    plugins: [leaderLabels],
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 250 },
+      onClick(event, elements) {
+        if (!elements.length) return;
+        const { datasetIndex, index } = elements[0];
+        window.location.href = "/players/" + chart.data.datasets[datasetIndex].data[index].player.id;
+      },
+      onHover(event, elements) {
+        event.native.target.style.cursor = elements.length ? "pointer" : "default";
+      },
+      plugins: {
+        legend: { labels: { color: muted, usePointStyle: true } },
+        tooltip: {
+          callbacks: {
+            title: () => labels[metric] + " · price",
+            label: (item) => {
+              const player = item.raw.player;
+              return player.name + " (" + player.team + " · " + player.position + "): " + player[metric] + " · £" + player.price.toFixed(1) + "m";
+            },
+          },
+        },
+      },
+      scales: {
+        x: { min: bounds.xMin, max: bounds.xMax, title: { display: true, text: "Price (£m)", color: muted }, ticks: { color: muted }, grid: { color: line } },
+        // The fan-out dips just below zero; the scale itself never does.
+        y: { min: bounds.yMin, title: { display: true, text: labels[metric], color: muted }, ticks: { color: muted, callback: (value) => (value < 0 ? "" : value) }, grid: { color: (context) => (context.tick.value < 0 ? "transparent" : line) } },
+      },
+    },
+  });
+
+  // Players with no value for the metric are left off, so count what is drawn.
+  const showCount = () => {
+    document.getElementById("graphCount").textContent = chart.data.datasets.reduce((total, dataset) => total + dataset.data.length, 0);
+  };
+  showCount();
+
+  document.querySelectorAll("[data-metric]").forEach((tab) => {
+    tab.addEventListener("click", (event) => {
+      event.preventDefault();
+      metric = tab.dataset.metric;
+      document.querySelectorAll("[data-metric]").forEach((other) => {
+        other.classList.toggle("active", other === tab);
+        if (other === tab) other.setAttribute("aria-current", "true");
+        else other.removeAttribute("aria-current");
+      });
+      chart.data.datasets = datasets();
+      chart.options.scales.y.title.text = labels[metric];
+      chart.options.scales.y.min = bounds.yMin;
+      chart.update();
+      document.getElementById("graphTitle").textContent = labels[metric] + " vs price";
+      showCount();
+      document.getElementById("graphMetricInput").value = metric;
+      history.replaceState(null, "", tab.href);
+    });
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

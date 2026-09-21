@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Player graphs
+
+- New `/graphs` page: every player plotted by price against one metric, with
+  tabs for goals, assists, xG, xA, xGI, points, points per 90, form, bonus, BPS,
+  ICT, clean sheets, minutes and ownership. The position filter limits the
+  points; switching metric redraws without a request and keeps the URL
+  shareable.
+- Players that share exactly the same price and value are fanned out around the
+  true spot so each keeps a visible point; tooltips report the true values.
+
 ### Hourly data sync
 
 - `REFRESH_HOURLY=true` makes every scheduled refresh run, so an hourly cron

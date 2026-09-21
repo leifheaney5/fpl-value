@@ -44,7 +44,7 @@ def test_web_routes_health_exports_and_new_pages(tmp_path):
     try:
         client = TestClient(app)
         assert client.get("/health").status_code == 200
-        for path in ["/", "/players", "/spreadsheet", "/recommendation", "/transfers", "/movers", "/compare", "/diagnostics", "/schema", "/settings", "/differentials", "/transfer-market", "/templates", "/fixtures", "/performance"]:
+        for path in ["/", "/players", "/spreadsheet", "/recommendation", "/transfers", "/movers", "/compare", "/diagnostics", "/schema", "/settings", "/differentials", "/transfer-market", "/templates", "/fixtures", "/performance", "/graphs"]:
             assert client.get(path).status_code == 200
         assert "No upcoming fixtures are available yet." in client.get("/fixtures").text
         assert "No scored fixtures are available yet." in client.get("/performance").text

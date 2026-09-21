@@ -60,6 +60,7 @@ the popup; explanations stay within the screen when tables scroll horizontally.
 - Next-gameweek captaincy ranking that counts double gameweeks and stays silent without expected minutes
 - Fixture Analysis page with the next 10 fixtures, official FPL difficulty ratings, club badges, and an easy-to-tough color gradient
 - Performance page with each team's last 10 validated results, form record, points per game, goals, and result strip
+- Graphs page plotting every player by price against a chosen metric (goals, assists, xG, xA and more), filterable by position
 - My Team page using the newest available public entry snapshot, with a manual refresh action and an explicit stale-snapshot warning when FPL is unavailable
 - Walk-forward backtesting of projections against six baselines
 - Walk-forward evaluation of the sheet's sort orders, individually and by the squad they build under a budget

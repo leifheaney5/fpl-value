@@ -633,6 +633,64 @@ def performance_page(request: Request, db: Session = Depends(get_db)):
     )
 
 
+_GRAPH_POSITIONS = ("GKP", "DEF", "MID", "FWD")
+_GRAPH_METRICS = {
+    "goals": "Goals",
+    "assists": "Assists",
+    "expected_goals": "xG",
+    "expected_assists": "xA",
+    "expected_goal_involvements": "xGI",
+    "total_points": "Total points",
+    "points_per_90": "Points / 90",
+    "form": "Form",
+    "bonus": "Bonus",
+    "bps": "BPS",
+    "ict_index": "ICT index",
+    "clean_sheets": "Clean sheets",
+    "minutes": "Minutes",
+    "ownership": "Ownership %",
+}
+
+
+@router.get("/graphs", response_class=HTMLResponse)
+def graphs_page(
+    request: Request,
+    position: str | None = None,
+    metric: str = "goals",
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    if position not in _GRAPH_POSITIONS:
+        position = None
+    if metric not in _GRAPH_METRICS:
+        metric = "goals"
+    rows = filtered_players(db, season=settings.current_season, position=position, sort="price")
+    # Every metric is embedded once so the toggle redraws without a request.
+    points = [
+        {
+            "id": row["player"].id,
+            "name": row["player"].full_name,
+            "team": row["team"].short_name,
+            "position": row["player"].position_short,
+            "price": row["snapshot"].price,
+            **{name: getattr(row["snapshot"], name) for name in _GRAPH_METRICS},
+        }
+        for row in rows
+    ]
+    # Same carry-over rule as the spreadsheet: totals describe last season
+    # until a match is played.
+    carry_over = any(
+        (row["snapshot"].team_matches or 0) == 0
+        and ((row["snapshot"].total_points or 0) > 0 or (row["snapshot"].minutes or 0) > 0)
+        for row in rows
+    )
+    return templates.TemplateResponse(request=request, name="graphs.html", context={
+        "points": points, "metrics": _GRAPH_METRICS, "metric": metric,
+        "positions": _GRAPH_POSITIONS, "position": position or "",
+        "carry_over": carry_over, "previous_season": _previous_season(settings.current_season),
+    })
+
+
 @router.get("/transfer-market", response_class=HTMLResponse)
 def transfer_market(request: Request, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
     rows = build_player_intelligence(latest_rows(db, settings.current_season))

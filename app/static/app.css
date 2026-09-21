@@ -39,7 +39,7 @@ button.ghost, .button.ghost { background: transparent; color: var(--text); borde
   position: sticky; top: 0; z-index: 20;
 }
 .site-header__brand { justify-self: start; }
-.site-header__nav { display: flex; justify-content: center; gap: 1.2rem; white-space: nowrap; }
+.site-header__nav { display: flex; justify-content: center; gap: .9rem; white-space: nowrap; }
 .site-header__nav a { color: var(--muted); }
 .site-header__nav a:hover { color: var(--text); }
 .site-header__actions { display: flex; justify-self: end; align-items: center; gap: .7rem; }
@@ -197,6 +197,7 @@ input, select {
 .schema-list { display: flex; flex-wrap: wrap; gap: .5rem; }
 .chart-panel { min-height: 360px; }
 .large-chart { min-height: 480px; }
+.graph-canvas { position: relative; height: min(70vh, 560px); }
 .empty, .muted { color: var(--muted); text-align: center; }
 .error { color: var(--red); background: rgba(255,91,105,.12); padding: .7rem; border-radius: 8px; }
 .login-body { min-height: 100vh; display: grid; place-items: center; }

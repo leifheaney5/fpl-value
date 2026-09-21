@@ -37,7 +37,7 @@ PAGES = [
     "/forward", "/rotation", "/transfers", "/movers", "/compare",
     "/diagnostics", "/schema", "/settings", "/differentials",
     "/transfer-market", "/templates", "/recommendation", "/captaincy",
-    "/fixtures", "/performance",
+    "/fixtures", "/performance", "/graphs",
 ]
 
 STATES = [
