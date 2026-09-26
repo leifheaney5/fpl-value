@@ -291,3 +291,26 @@ footer { border-top: 1px solid var(--line); color: var(--muted); text-align: cen
 .swatch-top-50 { background: rgba(242,138,60,.80); }
 .swatch-bottom-50 { background: rgba(255,91,105,.70); }
 .swatch-not-ranked { background: rgba(135,149,161,.40); }
+
+/* Manager rankings. The table is a third party's data shown in our own shell,
+   so the source line is part of the component rather than a footnote. */
+.source-note { color: var(--muted); font-size: .84rem; margin: 0 0 1rem; }
+.text-link { color: var(--accent-2); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+/* Sorting is a link, so it needs to look interactive inside a sticky header
+   without inheriting the accent colour every other .data-table a gets. */
+.sort-link { display: inline-flex; gap: .3rem; align-items: center; color: var(--muted); font-weight: 750; white-space: nowrap; }
+.sort-link:hover { color: var(--text); }
+.sort-link--active { color: var(--accent); }
+.data-table .flag { border: 1px solid var(--line); border-radius: 2px; vertical-align: middle; display: block; }
+/* Kept on one line: wrapping these three short links doubles the height of
+   every row in a hundred-row table, and the table already scrolls sideways. */
+.link-row { display: flex; flex-wrap: nowrap; gap: .35rem; white-space: nowrap; }
+.link-row a { padding: .15rem .45rem; border: 1px solid var(--line); border-radius: 6px; font-size: .74rem; font-weight: 750; background: var(--panel-2); }
+.link-row a:hover { border-color: var(--accent); color: var(--accent); }
+.pager { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between; margin-top: 1rem; }
+.pager__count { color: var(--muted); font-size: .85rem; margin: 0; }
+.pager__controls { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.pager__position { color: var(--muted); font-size: .85rem; padding: 0 .35rem; }
+@media (max-width: 600px) {
+  .pager, .pager__controls { justify-content: center; }
+}

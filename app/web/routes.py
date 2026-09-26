@@ -31,6 +31,15 @@ from app.db.session import get_db
 from app.services.captaincy import captain_candidates
 from app.services.data_status import data_status
 from app.services.exports import csv_bytes, xlsx_bytes
+from app.services.manager_ranks import (
+    MANAGER_PROFILE_URL,
+    ManagerRanksUnavailable,
+    SORT_FIELDS,
+    countries,
+    flag_code,
+    manager_ranks,
+    select_managers,
+)
 from app.services.queries import (
     dashboard_data,
     filtered_players,
@@ -689,6 +698,89 @@ def graphs_page(
         "positions": _GRAPH_POSITIONS, "position": position or "",
         "carry_over": carry_over, "previous_season": _previous_season(settings.current_season),
     })
+
+
+# (sort key, heading, column_help key). Split into two groups so the table can
+# put identity between them: a name is what a row is scanned for, and it reads
+# badly behind six columns of ranks.
+_MANAGER_LEAD_COLUMNS = (
+    ("rank", "Rank", "manager_rank"),
+    ("change", "Change", "manager_change"),
+)
+_MANAGER_WINDOW_COLUMNS = (
+    ("rank_3", "3-year", "manager_rank_3"),
+    ("rank_4", "4-year", "manager_rank_4"),
+    ("rank_5", "5-year", "manager_rank_5"),
+    ("rank_6", "6-year", "manager_rank_6"),
+    ("rank_7", "7-year", "manager_rank_7"),
+    ("rank_10", "10-year", "manager_rank_10"),
+)
+_MANAGER_COLUMNS = _MANAGER_LEAD_COLUMNS + _MANAGER_WINDOW_COLUMNS
+
+
+@router.get("/managers", response_class=HTMLResponse)
+def managers_page(
+    request: Request,
+    search: str = "",
+    country: str = "",
+    sort: str = "rank",
+    direction: str = "asc",
+    # A string for the same reason every other filter here is one: this URL is
+    # hand-edited and shared, and a bad page number should land on a page, not
+    # on a 422. select_managers clamps whatever survives.
+    page: str | None = None,
+    settings: Settings = Depends(get_settings),
+):
+    """All-time manager rankings, read from Premier Fantasy Tools' own endpoint.
+
+    The source page is a third party's, so an outage there must not take this
+    page down with it: an unreachable endpoint with no cached copy renders an
+    explanation and a link out, not a 500.
+    """
+    if sort not in SORT_FIELDS:
+        sort = "rank"
+    descending = direction == "desc"
+    context: dict[str, Any] = {
+        "search": search,
+        "country": country.upper(),
+        "sort": sort,
+        "direction": "desc" if descending else "asc",
+        "columns": _MANAGER_COLUMNS,
+        "lead_columns": _MANAGER_LEAD_COLUMNS,
+        "window_columns": _MANAGER_WINDOW_COLUMNS,
+        "source_page": settings.manager_ranks_source_page,
+        "profile_url": MANAGER_PROFILE_URL,
+        "flag_code": flag_code,
+    }
+    try:
+        ranks = manager_ranks(settings)
+    except ManagerRanksUnavailable:
+        # Already logged by the service, which knows the endpoint and the cause.
+        return templates.TemplateResponse(
+            request=request,
+            name="managers.html",
+            status_code=503,
+            context={**context, "ranks": None, "results": None, "countries": []},
+        )
+
+    results = select_managers(
+        ranks.rows,
+        search=search,
+        country=context["country"],
+        sort=sort,
+        descending=descending,
+        page=_optional_number(page, int) or 1,
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="managers.html",
+        context={
+            **context,
+            "ranks": ranks,
+            "results": results,
+            "countries": countries(ranks.rows),
+        },
+    )
 
 
 @router.get("/transfer-market", response_class=HTMLResponse)

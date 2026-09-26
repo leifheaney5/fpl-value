@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Best managers
+
+- New `/managers` page: the all-time FPL manager rankings compiled by Premier
+  Fantasy Tools, with search by manager or team, a country filter, and
+  server-side sorting on the all-time rank, the rank change, or any of the
+  three-, four-, five-, six-, seven- and ten-year windows. Sorting and paging
+  cover all 16,000-plus managers, not just the visible page.
+- This is the first data in the application that does not come from the
+  official FPL API. It is read from the same JSON endpoint the source's own
+  page uses, credited and linked on every view, cached on disk for a day
+  (`MANAGER_RANKS_TTL_SECONDS`), and never stored in the database.
+- If the source cannot be reached, the last cached copy is served and labelled
+  stale. If there is no cached copy at all, the page explains that and links
+  out rather than returning a server error.
+
 ### Player graphs
 
 - New `/graphs` page: every player plotted by price against one metric, with

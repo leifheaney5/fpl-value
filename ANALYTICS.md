@@ -32,7 +32,7 @@ guarantee of upside.
 Transfer-market totals are observed values from the latest official FPL
 bootstrap snapshot. When a prior local snapshot contains comparable totals,
 the application calculates net-transfer velocity and labels it Stable, Rising,
-Declining, or Spiking. Otherwise it displays \`Not available\`, rather than
+Declining, or Spiking. Otherwise it displays `Not available`, rather than
 inventing a trend. Snapshot age over 48 hours is marked stale.
 
 Template teams call the existing full-squad optimizer, which enforces the
