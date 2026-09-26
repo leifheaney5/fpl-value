@@ -98,6 +98,20 @@ class Settings(BaseSettings):
         "https://fantasy.premierleague.com/api/fixtures/"
     )
     fpl_entry_id: int | None = Field(default=None, ge=1)
+    # All-time manager rankings published by Premier Fantasy Tools. The endpoint
+    # is what their own public page reads; the page itself is kept so the view
+    # can credit and link the source. See app/services/manager_ranks.py.
+    manager_ranks_url: str = (
+        "https://www.premierfantasytools.com/getManagerAllTimeRanks.php"
+    )
+    manager_ranks_source_page: str = (
+        "https://www.premierfantasytools.com/best-fpl-managers-list/"
+    )
+    # A few megabytes describing rankings that change at most daily, so the
+    # response is cached on disk rather than refetched per request. The floor is
+    # five minutes: this is a third party's endpoint, not ours to poll.
+    manager_ranks_cache_path: str = "./data/manager_ranks.json"
+    manager_ranks_ttl_seconds: int = Field(default=24 * 60 * 60, ge=300)
 
     @property
     def credentials_configured(self) -> bool:

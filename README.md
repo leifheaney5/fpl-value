@@ -389,18 +389,37 @@ These are transparent analytical heuristics, not official FPL predictions.
 
 ### Decision surfaces
 
-\`/differentials\` ranks low-owned players using the existing forward value,
+`/differentials` ranks low-owned players using the existing forward value,
 expected minutes, form, availability, and rotation-risk inputs. It exposes the
 score components and marks each record as calculated from the latest official
-FPL snapshot. \`/transfer-market\` displays the current transfer-event totals
+FPL snapshot. `/transfer-market` displays the current transfer-event totals
 from that same snapshot; a change-versus-prior-snapshot is only shown when
-local history exists. \`/templates\` produces valid 15-player squads using the
+local history exists. `/templates` produces valid 15-player squads using the
 existing feasibility-first recommender and presents affordable alternatives for
 each selected player's position/price slot.
 
 These screens do not claim intraday transfer feeds, elite-manager ownership,
 external injury news, or trained prediction-model outputs. Those require
 additional source-specific collection and validation.
+
+### Third-party rankings
+
+`/managers` is the one screen whose data does not come from the official FPL
+API. It shows the all-time manager rankings compiled by
+[Premier Fantasy Tools](https://www.premierfantasytools.com/best-fpl-managers-list/),
+read from the same JSON endpoint their own page uses. The rankings are theirs,
+credited and linked on the page; this application only re-presents them.
+
+The response is a few megabytes and changes at most daily, so it is cached on
+disk at `MANAGER_RANKS_CACHE_PATH` (default `./data/manager_ranks.json`, which
+is not committed) for `MANAGER_RANKS_TTL_SECONDS` (default 24 hours).
+Nothing is written to the database. An unreachable source falls back to the
+last cached copy, labelled as stale; with no cached copy the page explains the
+outage and links out instead of failing.
+
+In the self-hosted stack the cache directory is the `fpl_data` volume, so it
+survives a redeploy. It is not a source of truth: deleting the volume costs one
+refetch and nothing else.
 
 ## Production notes
 
@@ -417,12 +436,12 @@ The Railway application uses PostgreSQL snapshots as its source of truth.
 Import supported CSV snapshots with:
 
 ```bash
-python -m app.cli import-history --directory "C:\\Users\\you\\Documents\\fpl_exports\\history"
+python -m app.cli import-history --directory "C:\Users\you\Documents\fpl_exports\history"
+```
 
 Replace the example path with the folder that actually contains the legacy
 CSV files. The importer reports a missing directory instead of silently doing
 nothing.
-```
 
 Imports match rows by Player ID, preserve timestamps, retain the original row
 payload, record skipped rows, and are idempotent. Fields unavailable in the

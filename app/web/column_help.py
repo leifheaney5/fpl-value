@@ -108,6 +108,18 @@ COLUMN_HELP = {
     "schema_change": "Whether a field was added, removed, or recorded in the initial baseline.",
     "list_rank": "Position in this list of risers or fallers.",
     "metric": "The measure being compared across the selected players.",
+    "manager_rank": "All-time rank across every season the manager has played, as published by Premier Fantasy Tools.",
+    "manager_change": "Movement in all-time rank since the source last recompiled the list. A climb means the manager moved closer to first.",
+    "manager_country": "The country registered on the manager's FPL account.",
+    "manager_name": "The manager's name as published on the source ranking.",
+    "manager_team": "The name the manager has given their FPL team.",
+    "manager_links": "Open this manager's FPL history, their profile on the source site, or their X account.",
+    "manager_rank_3": "Rank over the manager's best three seasons. Blank when they have not played three.",
+    "manager_rank_4": "Rank over the manager's best four seasons. Blank when they have not played four.",
+    "manager_rank_5": "Rank over the manager's best five seasons. Blank when they have not played five.",
+    "manager_rank_6": "Rank over the manager's best six seasons. Blank when they have not played six.",
+    "manager_rank_7": "Rank over the manager's best seven seasons. Blank when they have not played seven.",
+    "manager_rank_10": "Rank over the manager's best ten seasons. Blank when they have not played ten.",
 }
 
 

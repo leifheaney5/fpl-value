@@ -11,7 +11,7 @@ model-artefact handling are in [`../../DEPLOYMENT.md`](../../DEPLOYMENT.md).
 | URL | <https://fpl-studio.leif.media> (tailnet only) |
 | Loopback | `127.0.0.1:8788` |
 | Containers | `fpl-studio-app-1`, `fpl-studio-postgres-1` |
-| Volume | `fpl-studio_fpl_postgres` |
+| Volumes | `fpl-studio_fpl_postgres` (database), `fpl-studio_fpl_data` (cached manager rankings; disposable) |
 | Refresh | host cron, hourly at `5 * * * *` → `/home/leif/fpl-studio-refresh.log` |
 | Monitoring | host cron, `*/5 * * * *` → ntfy topic `fpl-studio` |
 | Access | `ACCESS_MODE=local` — no sign-in; the tailnet is the access control |

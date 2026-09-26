@@ -7,6 +7,8 @@ htmlcov/
 .env
 .venv/
 data/*.db
+# Cached third-party rankings; refetched on demand. See app/services/manager_ranks.py.
+data/manager_ranks.json
 *.sqlite3
 dist/
 build/

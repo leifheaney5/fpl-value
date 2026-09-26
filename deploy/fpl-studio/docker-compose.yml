@@ -37,6 +37,13 @@ services:
     environment:
       PORT: 8788
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-fpl}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fpl}
+    volumes:
+      # Holds the cached third-party manager rankings, which are a few megabytes
+      # fetched once a day. Without this the container's writable layer is
+      # discarded on every redeploy and the first visitor after one waits for a
+      # refetch. Nothing here is a source of truth: deleting the volume only
+      # costs one fetch. See app/services/manager_ranks.py.
+      - fpl_data:/app/data
     ports:
       - "127.0.0.1:${FPL_STUDIO_PORT:-8788}:8788"
     depends_on:
@@ -65,6 +72,7 @@ services:
 
 volumes:
   fpl_postgres:
+  fpl_data:
 
 networks:
   fpl:
